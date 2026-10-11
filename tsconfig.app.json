@@ -15,7 +15,11 @@
      */
     "allowJs": true,
     "checkJs": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "paths": {
+      "tonal": ["./node_modules/tonal/dist/index.d.mts"],
+      "@tonaljs/*": ["./node_modules/@tonaljs/*/dist/index.d.mts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
 }

@@ -21,6 +21,8 @@ export interface SequenceOptions {
   noteDuration?: number
   /** Abstand zwischen Tonanfängen in Sekunden */
   interval?: number
+  /** Wird direkt nach dem Anschlag jedes Tons aufgerufen (index ab 0) */
+  onNote?: (index: number, note: string) => void
 }
 
 // Sample-Stützstellen (Kleinterzen), siehe scripts/copy-samples.mjs
@@ -143,12 +145,13 @@ export class AudioEngine {
    * eine neue Sequenz die Wiedergabe abbricht.
    */
   async playSequence(notes: string[], opts: SequenceOptions = {}): Promise<void> {
-    const { noteDuration = 1.2, interval = 1.4 } = opts
+    const { noteDuration = 1.2, interval = 1.4, onNote } = opts
     const myRun = ++this.runId
     this.releaseAll()
     for (let i = 0; i < notes.length; i++) {
       if (myRun !== this.runId) return
       this.play(notes[i], noteDuration)
+      onNote?.(i, notes[i])
       await sleep(interval * 1000)
     }
   }

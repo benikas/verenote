@@ -1,7 +1,7 @@
 <script lang="ts">
   import { audio, type LoadState } from '../audio/engine'
 
-  let { load }: { load: LoadState } = $props()
+  let { load, onback }: { load: LoadState; onback: () => void } = $props()
 
   // Stammtöne in englischer Schreibweise, Oktave 4
   const NOTES = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']
@@ -33,6 +33,7 @@
   </div>
 
   <button class="wide ghost" onclick={() => audio.stop()}>Stopp</button>
+  <button class="wide ghost" onclick={onback}>Zurück</button>
 </main>
 
 <style>
