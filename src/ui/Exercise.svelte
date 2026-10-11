@@ -355,15 +355,15 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 18px;
-    padding: 8px 0;
+    gap: 12px;
+    padding: 4px 0;
   }
   .prompt {
     margin: 0;
     font-size: 1.35rem;
     line-height: 1.35;
     text-align: center;
-    min-height: 3.6em;
+    min-height: 3.2em;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -386,14 +386,16 @@
     justify-content: center;
     align-content: flex-start;
     flex-wrap: wrap;
-    /* zwei Zeilen reservieren: mit "Vergleich" bricht die Reihe um */
-    min-height: 108px;
+    gap: 8px;
+    /* eine Zeile reservieren, genug Platz auch auf kleinen Handys */
+    min-height: 52px;
   }
   .actions button {
+    min-height: 48px;
     background: var(--surface-2);
     border: 0;
     border-radius: 12px;
-    padding: 12px 18px;
+    padding: 10px 14px;
     font-size: 1rem;
   }
   .actions button:active {
@@ -403,11 +405,12 @@
     opacity: 0.4;
   }
   .next {
+    min-height: 56px;
     background: var(--accent);
     color: #fff;
     border: 0;
     border-radius: 16px;
-    padding: 18px;
+    padding: 14px;
     font-size: 1.15rem;
     font-weight: 600;
   }
@@ -428,5 +431,35 @@
   }
   .lage.hidden {
     visibility: hidden;
+  }
+
+  /* Kleine Handys (z. B. 320 × 568): enger setzen, damit nichts scrollen muss */
+  @media (max-height: 640px) {
+    .ex {
+      gap: 8px;
+      padding: 8px 12px 10px;
+    }
+    .stage {
+      gap: 8px;
+    }
+    .prompt {
+      font-size: 1.1rem;
+      min-height: 2.8em;
+    }
+    .actions {
+      gap: 6px;
+      min-height: 48px;
+    }
+    .actions button {
+      padding: 8px 10px;
+      font-size: 0.9rem;
+    }
+    .next {
+      min-height: 48px;
+      padding: 8px;
+    }
+    .keys {
+      height: clamp(170px, 34dvh, 300px);
+    }
   }
 </style>

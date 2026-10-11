@@ -56,21 +56,21 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
   }
   button {
-    min-height: 52px;
-    padding: 6px 4px;
+    min-height: 48px;
+    padding: 4px 4px;
     border: 0;
     border-radius: 12px;
     background: var(--surface-2);
     color: var(--text);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 600;
-    line-height: 1.15;
+    line-height: 1.12;
     display: flex;
     flex-direction: column;
     align-items: center;

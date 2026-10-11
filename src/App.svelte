@@ -12,11 +12,13 @@
   import Exercise from './ui/Exercise.svelte'
   import FreeTraining from './ui/FreeTraining.svelte'
   import Home from './ui/Home.svelte'
+  import Path from './ui/Path.svelte'
+  import Settings from './ui/Settings.svelte'
   import StartScreen from './ui/StartScreen.svelte'
   import Stats from './ui/Stats.svelte'
   import Summary from './ui/Summary.svelte'
 
-  type Screen = 'start' | 'home' | 'free' | 'exercise' | 'summary' | 'test' | 'stats'
+  type Screen = 'start' | 'home' | 'path' | 'free' | 'exercise' | 'summary' | 'test' | 'stats' | 'settings'
 
   let screen = $state<Screen>('start')
   let load = $state<LoadState>(audio.loadState)
@@ -95,9 +97,14 @@
     screen = 'summary'
   }
 
+  /** Zurück dorthin, wo die Runde gestartet wurde: Lernpfad oder Freies Training */
+  function backToChooser() {
+    screen = 'free' in lastRun ? 'free' : 'path'
+  }
+
   function exit() {
     audio.stop()
-    screen = 'home'
+    backToChooser()
   }
 </script>
 
@@ -105,11 +112,15 @@
   <StartScreen {load} onstart={start} />
 {:else if screen === 'home'}
   <Home
-    onstart={startRound}
+    onpath={() => (screen = 'path')}
     onfree={() => (screen = 'free')}
-    ontest={() => (screen = 'test')}
     onstats={() => (screen = 'stats')}
+    onsettings={() => (screen = 'settings')}
   />
+{:else if screen === 'path'}
+  <Path onback={() => (screen = 'home')} onstart={startRound} />
+{:else if screen === 'settings'}
+  <Settings onback={() => (screen = 'home')} ontest={() => (screen = 'test')} />
 {:else if screen === 'free'}
   <FreeTraining onback={() => (screen = 'home')} onstart={startFree} />
 {:else if screen === 'exercise' && session}
@@ -121,12 +132,12 @@
     nextLevel={summary.level ? nextLevel(summary.level) : null}
     onagain={again}
     onnext={(id) => startRound(id, settings.length)}
-    onhome={() => (screen = 'home')}
+    onhome={backToChooser}
   />
 {:else if screen === 'stats'}
   <Stats onback={() => (screen = 'home')} />
 {:else if screen === 'test'}
-  <AudioTest {load} onback={() => (screen = 'home')} />
+  <AudioTest {load} onback={() => (screen = 'settings')} />
 {/if}
 
 {#if needsTap && screen === 'exercise'}

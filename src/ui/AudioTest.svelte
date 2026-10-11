@@ -190,6 +190,7 @@
   }
   .seg button {
     flex: 1;
+    min-height: 44px;
     padding: 12px 4px;
     font-size: 0.95rem;
   }

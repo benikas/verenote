@@ -116,4 +116,10 @@
     text-align: center;
     padding-top: 16px;
   }
+  footer a {
+    /* größere Berührfläche für den Lizenz-Link */
+    display: inline-block;
+    padding: 14px 6px;
+    margin: -14px -6px;
+  }
 </style>
