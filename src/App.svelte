@@ -98,7 +98,7 @@
 {/if}
 
 {#if needsTap && screen === 'exercise'}
-  <button class="resume" onclick={() => void audio.resume()}>
+  <button class="resume" onclick={() => void audio.resume(true)}>
     <span class="big">Tippen zum Fortsetzen</span>
     <span class="small">Der Ton wurde beim App-Wechsel angehalten.</span>
   </button>

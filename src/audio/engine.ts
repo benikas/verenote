@@ -32,6 +32,10 @@ export interface SequenceOptions {
 
 const LOAD_TIMEOUT_MS = 30_000
 
+const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export class AudioEngine {
@@ -47,6 +51,13 @@ export class AudioEngine {
   /** Wiedergabe wurde unterbrochen (App im Hintergrund); wartet auf Rückkehr von Audio */
   private interrupted = false
   private lifecycleBound = false
+  /** Die geladenen Klavier-Samples; bleiben beim Neuaufbau des AudioContext erhalten */
+  private buffers: Record<string, Tone.ToneAudioBuffer> | null = null
+  /**
+   * iOS: Nach Hintergrund/Sperrbildschirm ist der AudioContext oft tot, meldet aber weiter
+   * "running". Dann hilft nur ein neuer Kontext, aufgebaut im nächsten Tippen.
+   */
+  private stale = false
 
   loadState: LoadState = { phase: 'idle', progress: 0 }
 
@@ -78,13 +89,25 @@ export class AudioEngine {
     if (nav.audioSession) nav.audioSession.type = 'playback'
 
     await Tone.start()
+    this.makeSynth()
+    this.unlocked = true
+    this.bindLifecycle()
+    this.bindContext()
+  }
+
+  private makeSynth(): void {
     this.synth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'triangle' },
       envelope: { attack: 0.005, decay: 0.4, sustain: 0.25, release: 1.2 },
     }).toDestination()
     this.synth.volume.value = -8
-    this.unlocked = true
-    this.bindLifecycle()
+  }
+
+  private makeSampler(): void {
+    if (!this.buffers) return
+    const sampler = new Tone.Sampler({ urls: this.buffers, release: 1.2 }).toDestination()
+    sampler.volume.value = -4
+    this.sampler = sampler
   }
 
   // ---- Audio nach App-Wechsel wieder aufnehmen (B2) -------------------------------
@@ -99,12 +122,45 @@ export class AudioEngine {
 
   /** Läuft der AudioContext gerade? */
   get running(): boolean {
-    return this.unlocked && this.rawCtx.state === 'running'
+    return this.unlocked && !this.stale && this.rawCtx.state === 'running'
   }
 
   /** Audio ist entsperrt, läuft aber nicht (mehr): ein Tippen ist nötig */
   get needsTap(): boolean {
     return this.unlocked && !this.running
+  }
+
+  /** Neuer AudioContext mit neuem Synth/Sampler; die geladenen Samples bleiben. */
+  private rebuild(): void {
+    const oldCtx = Tone.getContext()
+    const oldSynth = this.synth
+    const oldSampler = this.sampler
+    Tone.setContext(new Tone.Context())
+    this.synth = null
+    this.sampler = null
+    this.makeSynth()
+    this.makeSampler()
+    this.bindContext()
+    try {
+      oldSynth?.dispose()
+      oldSampler?.dispose()
+      void (oldCtx.rawContext as AudioContext).close?.()
+    } catch {
+      /* der alte Kontext ist ohnehin unbrauchbar */
+    }
+  }
+
+  /** Kurzer stiller Ton im Tippen: schaltet iOS Audio endgültig frei */
+  private silentKick(): void {
+    try {
+      const ctx = this.rawCtx
+      const src = ctx.createBufferSource()
+      src.buffer = ctx.createBuffer(1, 1, 22050)
+      src.connect(ctx.destination)
+      src.start(0)
+    } catch {
+      /* nicht kritisch */
+    }
   }
 
   onStatus(fn: (needsTap: boolean) => void): () => void {
@@ -128,14 +184,24 @@ export class AudioEngine {
    * Versucht, den AudioContext wieder zu starten. Ohne Berührung verweigert iOS das
    * unter Umständen, dann bleibt needsTap wahr. Hängt nie länger als ~1,5 s.
    */
-  async resume(): Promise<boolean> {
+  async resume(fromGesture = false): Promise<boolean> {
     if (!this.unlocked) return false
-    if (this.rawCtx.state !== 'running') {
+    // Ein neuer Kontext darf nur aus einer Berührung heraus gestartet werden. Alles bis zum
+    // resume()-Aufruf läuft deshalb synchron, ohne await.
+    if (this.stale && fromGesture) {
+      this.rebuild()
+      this.stale = false
+    }
+    if (!this.stale && this.rawCtx.state !== 'running') {
       try {
-        await Promise.race([this.rawCtx.resume(), sleep(1500)])
+        const p = this.rawCtx.resume()
+        if (fromGesture) this.silentKick()
+        await Promise.race([p, sleep(1500)])
       } catch {
         /* bleibt gesperrt, needsTap meldet es */
       }
+    } else if (!this.stale && fromGesture) {
+      this.silentKick()
     }
     this.checkStatus()
     return this.running
@@ -144,7 +210,7 @@ export class AudioEngine {
   private checkStatus(): void {
     const needsTap = this.needsTap
     this.statusListeners.forEach((fn) => fn(needsTap))
-    if (this.running && this.interrupted && !document.hidden) {
+    if (this.running && this.interrupted && !this.stale && !document.hidden) {
       this.interrupted = false
       this.resumeListeners.forEach((fn) => fn())
     }
@@ -158,11 +224,24 @@ export class AudioEngine {
     this.interruptListeners.forEach((fn) => fn())
   }
 
+  /** Auf Zustandswechsel des aktuellen AudioContext hören (nach jedem Neuaufbau neu). */
+  private bindContext(): void {
+    const ctx = this.rawCtx
+    ctx.addEventListener('statechange', () => {
+      if (ctx !== this.rawCtx) return // alter Kontext
+      // Das Gerät hat Audio weggenommen (Anruf, Sperrbildschirm) oder gibt es zurück
+      if ((ctx.state as string) === 'interrupted' && IS_IOS) this.stale = true
+      if (ctx.state !== 'running') this.markInterrupted()
+      this.checkStatus()
+    })
+  }
+
   private bindLifecycle(): void {
     if (this.lifecycleBound) return
     this.lifecycleBound = true
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
+        if (IS_IOS) this.stale = true
         this.markInterrupted()
         this.checkStatus()
       }
@@ -170,14 +249,9 @@ export class AudioEngine {
     })
     // Zurück aus dem Seiten-Cache (Safari): Zustand neu prüfen
     window.addEventListener('pageshow', () => void this.resume())
-    // Das Gerät hat Audio weggenommen (Anruf, Sperrbildschirm) oder gibt es zurück
-    this.rawCtx.addEventListener('statechange', () => {
-      if (this.rawCtx.state !== 'running') this.markInterrupted()
-      this.checkStatus()
-    })
     // iOS erlaubt resume() nur in einer Berührung (touchend/click, nicht pointerdown)
     const onGesture = () => {
-      if (this.needsTap) void this.resume()
+      if (this.needsTap) void this.resume(true)
     }
     window.addEventListener('touchend', onGesture, { capture: true, passive: true })
     window.addEventListener('click', onGesture, { capture: true, passive: true })
@@ -219,9 +293,8 @@ export class AudioEngine {
 
     return Promise.race([Promise.all(loads), timeout])
       .then(() => {
-        const sampler = new Tone.Sampler({ urls: buffers, release: 1.2 }).toDestination()
-        sampler.volume.value = -4
-        this.sampler = sampler
+        this.buffers = buffers
+        this.makeSampler()
         this.setLoadState({ phase: 'ready', progress: 1, ms: Math.round(performance.now() - t0) })
       })
       .catch((e: unknown) => {
