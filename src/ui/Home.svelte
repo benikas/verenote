@@ -11,9 +11,15 @@
 
   let {
     onstart,
+    onfree,
     ontest,
     onstats,
-  }: { onstart: (level: LevelId, length: number) => void; ontest: () => void; onstats: () => void } = $props()
+  }: {
+    onstart: (level: LevelId, length: number) => void
+    onfree: () => void
+    ontest: () => void
+    onstats: () => void
+  } = $props()
 
   const DESCRIPTIONS: Record<LevelId, string> = {
     '1a': 'Nur drei Töne, gut zu unterscheiden. Der beste Einstieg.',
@@ -198,6 +204,7 @@
   </div>
 
   <button class="go" onclick={() => onstart(level, settings.length)}>Runde starten · Stufe {level}</button>
+  <button class="free" onclick={onfree}>Freies Training</button>
   <button class="link" onclick={onstats}>Statistik und Daten</button>
   <button class="link" onclick={ontest}>Ton-Prüfung (alle Töne anhören)</button>
 </main>
@@ -421,6 +428,14 @@
   }
   .go:active {
     filter: brightness(0.9);
+  }
+  .free {
+    background: var(--surface);
+    border: 2px solid var(--surface-2);
+    border-radius: 16px;
+    padding: 16px;
+    font-size: 1.05rem;
+    font-weight: 600;
   }
   .link {
     background: none;

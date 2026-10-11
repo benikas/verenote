@@ -1,11 +1,12 @@
 import { DEFAULT_SETTINGS, TEMPO_MAX, TEMPO_MIN, type Settings } from '../exercise/settings'
+import { CHROMATIC_SHARPS, STAMMTOENE } from '../theory/notes'
 import { LEVELS, type LevelId } from '../theory/tasks'
 
 /**
  * Datenformat der gespeicherten Daten (rein, ohne Browser-API).
  * Versioniert: Jede Änderung am Format erhöht DATA_VERSION und bekommt einen Migrationsschritt.
  */
-export const DATA_VERSION = 2
+export const DATA_VERSION = 3
 
 /** Wie viele letzte Versuche pro Stufe für die Freischaltung zählen */
 export const RECENT_ATTEMPTS = 20
@@ -16,6 +17,36 @@ export const DEFAULT_DONE_THRESHOLD = 0.8
 /** Nach so vielen Runden ohne Export erscheint die Erinnerung */
 export const EXPORT_REMINDER_ROUNDS = 5
 
+/** Freies Training: Einstellungen je Übungstyp (Konzept v6) */
+export interface FreeSettings {
+  /** Zuletzt gewählter Übungstyp */
+  type: 'notes' | 'intervals'
+  /** Grundtöne: Zieltöne als Pitch Class (Kreuze), in der Reihenfolge C bis B */
+  notes: string[]
+  /** Grundtöne: Oktaven des Zieltons (3, 4, 5) */
+  octaves: number[]
+  /** Grundtöne: mit Referenzton C4 (aus = absolutes Hören) */
+  reference: boolean
+  /** Intervalle: erlaubte Intervalle in Halbtönen, aufsteigend */
+  intervals: number[]
+  directions: 'up' | 'down' | 'both'
+  modes: 'melodic' | 'harmonic' | 'both'
+  start: 'fixed' | 'random'
+}
+
+export const FREE_OCTAVES = [3, 4, 5] as const
+
+export const DEFAULT_FREE_SETTINGS: FreeSettings = {
+  type: 'notes',
+  notes: [...STAMMTOENE],
+  octaves: [4],
+  reference: true,
+  intervals: [0, 2, 3, 4, 5, 7, 12],
+  directions: 'up',
+  modes: 'melodic',
+  start: 'fixed',
+}
+
 /** Einstellungen, wie sie gespeichert werden: Übungs-Einstellungen plus zuletzt Gewähltes */
 export interface PersistedSettings extends Settings {
   /** Zuletzt gewählte Stufe */
@@ -24,6 +55,8 @@ export interface PersistedSettings extends Settings {
   length: number
   /** Trefferquote 0–1, ab der eine Stufe als „geschafft“ gilt */
   doneThreshold: number
+  /** Freies Training (ab Version 3) */
+  free: FreeSettings
 }
 
 export const ROUND_LENGTHS = [10, 15, 20] as const
@@ -75,6 +108,7 @@ export const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   level: '1a',
   length: 15,
   doneThreshold: DEFAULT_DONE_THRESHOLD,
+  free: DEFAULT_FREE_SETTINGS,
 }
 
 export function emptyProgress(): Progress {
@@ -88,7 +122,7 @@ export function emptyBackup(): Backup {
 export function emptyData(): AppData {
   return {
     version: DATA_VERSION,
-    settings: { ...DEFAULT_PERSISTED_SETTINGS },
+    settings: cleanSettings(undefined),
     progress: emptyProgress(),
     backup: emptyBackup(),
   }
@@ -108,9 +142,33 @@ function count(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0
 }
 
+/** Auswahl aus erlaubten Werten: gültige übernehmen, Reihenfolge der Vorlage, keine Doppelten; leer = Standard. */
+function pickAllowed<T>(raw: unknown, allowed: readonly T[], fallback: readonly T[]): T[] {
+  if (!Array.isArray(raw)) return [...fallback]
+  const picked = allowed.filter((v) => raw.includes(v))
+  return picked.length > 0 ? picked : [...fallback]
+}
+
+function cleanFree(raw: unknown): FreeSettings {
+  const d = DEFAULT_FREE_SETTINGS
+  if (!isObject(raw)) return { ...d, notes: [...d.notes], octaves: [...d.octaves], intervals: [...d.intervals] }
+  const oneOf = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+    allowed.includes(v as T) ? (v as T) : fallback
+  return {
+    type: oneOf(raw.type, ['notes', 'intervals'] as const, d.type),
+    notes: pickAllowed(raw.notes, CHROMATIC_SHARPS, d.notes),
+    octaves: pickAllowed(raw.octaves, FREE_OCTAVES, d.octaves),
+    reference: typeof raw.reference === 'boolean' ? raw.reference : d.reference,
+    intervals: pickAllowed(raw.intervals, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], d.intervals),
+    directions: oneOf(raw.directions, ['up', 'down', 'both'] as const, d.directions),
+    modes: oneOf(raw.modes, ['melodic', 'harmonic', 'both'] as const, d.modes),
+    start: oneOf(raw.start, ['fixed', 'random'] as const, d.start),
+  }
+}
+
 function cleanSettings(raw: unknown): PersistedSettings {
   const d = DEFAULT_PERSISTED_SETTINGS
-  if (!isObject(raw)) return { ...d }
+  if (!isObject(raw)) return { ...d, free: cleanFree(undefined) }
   return {
     neutralize: typeof raw.neutralize === 'boolean' ? raw.neutralize : d.neutralize,
     neutralLength: raw.neutralLength === 'long' || raw.neutralLength === 'short' ? raw.neutralLength : d.neutralLength,
@@ -119,6 +177,8 @@ function cleanSettings(raw: unknown): PersistedSettings {
     length: (ROUND_LENGTHS as readonly number[]).includes(raw.length as number) ? (raw.length as number) : d.length,
     // Version 1 nannte es unlockThreshold
     doneThreshold: num(raw.doneThreshold ?? raw.unlockThreshold, d.doneThreshold, 0.5, 1),
+    // Version 3: Freies Training. Ältere Daten haben das Feld nicht und bekommen die Standardwerte.
+    free: cleanFree(raw.free),
   }
 }
 
@@ -209,6 +269,8 @@ export function migrate(raw: unknown): Migration {
   const settings = cleanSettings(raw.settings)
   const progress = cleanProgress(raw.progress)
   if (raw.version < 2) progress.done = doneFromV1(raw.progress && isObject(raw.progress) ? raw.progress : {}, progress, settings.doneThreshold)
+  // Version 2 → 3: Neue Felder (settings.free), neue Stufen 2a–2f, Item-Schlüssel "int:…" und
+  // Runden des Freien Trainings. Es ist nichts umzurechnen, alles Bestehende bleibt unverändert.
   // Hier kommen künftig weitere Schritte "von Version n auf n+1" hinzu.
   const data: AppData = {
     version: DATA_VERSION,

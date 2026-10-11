@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DATA_VERSION, DEFAULT_PERSISTED_SETTINGS, emptyData, migrate } from './schema'
+import { DATA_VERSION, DEFAULT_FREE_SETTINGS, DEFAULT_PERSISTED_SETTINGS, emptyData, migrate } from './schema'
 import { DATA_KEY, clearData, loadData, memoryStore, saveData, type KeyValueStore } from './store'
 
 describe('Speicherschicht', () => {
@@ -144,5 +144,131 @@ describe('Migration', () => {
     expect(m.data.progress.recent['1a']).toHaveLength(20)
     expect(m.data.progress.rounds).toHaveLength(30)
     expect(m.data.progress.rounds.at(-1)?.at).toBe('2026-01-49')
+  })
+})
+
+describe('Migration Version 2 → 3 (M3: Intervalle, Freies Training)', () => {
+  const v2 = {
+    version: 2,
+    settings: { neutralize: false, neutralLength: 'long', tempo: 0.9, level: '1d', length: 20, doneThreshold: 0.85 },
+    progress: {
+      items: { 'E|C': { hits: 12, misses: 8 }, 'F#|C': { hits: 3, misses: 1 } },
+      recent: { '1a': [true, true, false], '1d': Array(20).fill(true) },
+      rounds: [{ at: '2026-10-11T10:00:00.000Z', level: '1a', total: 15, correct: 12 }],
+      done: ['1a', '1b', '1c'],
+    },
+    backup: { roundsSinceExport: 3, remindAt: 8 },
+  }
+
+  it('übernimmt alles Bestehende unverändert und ergänzt das Freie Training mit Standardwerten', () => {
+    const m = migrate(v2)
+    expect(m.status).toBe('migrated')
+    expect(m.data.version).toBe(DATA_VERSION)
+    expect(m.data.settings).toMatchObject({ neutralize: false, neutralLength: 'long', tempo: 0.9, level: '1d', length: 20, doneThreshold: 0.85 })
+    expect(m.data.progress.items).toEqual(v2.progress.items)
+    expect(m.data.progress.recent).toEqual(v2.progress.recent)
+    expect(m.data.progress.rounds).toEqual(v2.progress.rounds)
+    expect(m.data.progress.done).toEqual(['1a', '1b', '1c'])
+    expect(m.data.backup).toEqual({ roundsSinceExport: 3, remindAt: 8 })
+    expect(m.data.settings.free).toEqual(DEFAULT_FREE_SETTINGS)
+  })
+
+  it('Standardwerte des Freien Trainings werden nicht geteilt (keine Verschmutzung der Vorlage)', () => {
+    const a = migrate(v2).data
+    a.settings.free.notes.push('X')
+    a.settings.free.intervals.length = 0
+    expect(DEFAULT_FREE_SETTINGS.notes).not.toContain('X')
+    expect(DEFAULT_FREE_SETTINGS.intervals.length).toBeGreaterThan(0)
+    expect(migrate(v2).data.settings.free.notes).not.toContain('X')
+  })
+
+  it('Version 1 läuft in einem Zug bis Version 3', () => {
+    const m = migrate({
+      version: 1,
+      settings: { level: '1c', unlockThreshold: 0.8 },
+      progress: { items: { 'E|C': { hits: 1, misses: 0 } }, unlocked: ['1a', '1b'], recent: {}, rounds: [] },
+    })
+    expect(m.data.version).toBe(DATA_VERSION)
+    expect(m.data.progress.done).toEqual(['1a'])
+    expect(m.data.progress.items).toEqual({ 'E|C': { hits: 1, misses: 0 } })
+    expect(m.data.settings.free).toEqual(DEFAULT_FREE_SETTINGS)
+  })
+
+  it('Daten von Version 3 bleiben beim Schreiben und Lesen gleich (Intervalle, Freies Training)', async () => {
+    const store = memoryStore()
+    const data = emptyData()
+    data.settings.free = {
+      type: 'intervals',
+      notes: ['C', 'F#'],
+      octaves: [3, 5],
+      reference: false,
+      intervals: [3, 4, 7],
+      directions: 'both',
+      modes: 'harmonic',
+      start: 'random',
+    }
+    data.progress.items['int:4:up'] = { hits: 2, misses: 1 }
+    data.progress.items['int:4:harm'] = { hits: 1, misses: 0 }
+    data.progress.items['E|-'] = { hits: 4, misses: 0 }
+    data.progress.recent['2a'] = [true, false]
+    data.progress.done = ['1a', '2a']
+    data.progress.rounds.push({ at: '2026-10-12T08:00:00.000Z', level: '2a', total: 10, correct: 7 })
+    data.progress.rounds.push({ at: '2026-10-12T08:10:00.000Z', level: 'free-intervals', total: 10, correct: 5 })
+    data.progress.rounds.push({ at: '2026-10-12T08:20:00.000Z', level: 'free-notes', total: 10, correct: 9 })
+    await saveData(store, data)
+    const loaded = await loadData(store)
+    expect(loaded.status).toBe('ok')
+    expect(loaded.data).toEqual(data)
+  })
+
+  it('Freies Training: kaputte Werte fallen auf Standard zurück, Auswahl bleibt geordnet', () => {
+    const m = migrate({
+      version: 3,
+      settings: {
+        free: {
+          type: 'x',
+          notes: ['G', 'C', 'C', 'Q', 7],
+          octaves: [5, 9, 3],
+          reference: 'ja',
+          intervals: [12, 4, 99, -1, 4],
+          directions: 'sideways',
+          modes: 'both',
+          start: 'random',
+        },
+      },
+    })
+    expect(m.data.settings.free).toEqual({
+      ...DEFAULT_FREE_SETTINGS,
+      notes: ['C', 'G'],
+      octaves: [3, 5],
+      intervals: [4, 12],
+      modes: 'both',
+      start: 'random',
+    })
+    expect(migrate({ version: 3, settings: { free: { notes: [], intervals: [], octaves: [] } } }).data.settings.free).toEqual(DEFAULT_FREE_SETTINGS)
+    expect(migrate({ version: 3, settings: { free: 'kaputt' } }).data.settings.free).toEqual(DEFAULT_FREE_SETTINGS)
+  })
+
+  it('Runden: Stufen 2a–2f und Freies Training bleiben, unbekannte Stufen fallen weg', () => {
+    const m = migrate({
+      version: 3,
+      progress: {
+        rounds: [
+          { at: 'a', level: '2f', total: 5, correct: 5 },
+          { at: 'b', level: 'free-notes', total: 5, correct: 1 },
+          { at: 'c', level: 'free-intervals', total: 5, correct: 1 },
+          { at: 'd', level: '9z', total: 5, correct: 1 },
+        ],
+        recent: { '2c': [true, true], '9z': [true] },
+        done: ['2a', '9z', '1a'],
+      },
+    })
+    expect(m.data.progress.rounds.map((r) => r.level)).toEqual(['2f', 'free-notes', 'free-intervals'])
+    expect(Object.keys(m.data.progress.recent)).toEqual(['2c'])
+    expect(m.data.progress.done).toEqual(['1a', '2a'])
+  })
+
+  it('Daten einer künftigen Version 4 werden nicht überschrieben', () => {
+    expect(migrate({ version: 4 }).status).toBe('newer')
   })
 })

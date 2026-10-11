@@ -1,6 +1,6 @@
 import {
   DATA_VERSION,
-  DEFAULT_PERSISTED_SETTINGS,
+  emptyData,
   emptyBackup,
   emptyProgress,
   type AppData,
@@ -14,7 +14,7 @@ import { idbStore, loadData, saveData, type Loaded, type KeyValueStore } from '.
  * Gemeinsamer, reaktiver Zustand: Einstellungen und Fortschritt.
  * Wird beim Start aus IndexedDB geladen und bei Änderungen gespeichert.
  */
-export const settings: PersistedSettings = $state({ ...DEFAULT_PERSISTED_SETTINGS })
+export const settings: PersistedSettings = $state(emptyData().settings)
 export const progress: Progress = $state(emptyProgress())
 export const backup: Backup = $state(emptyBackup())
 

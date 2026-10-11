@@ -21,6 +21,7 @@ import {
   type Task,
 } from './tasks'
 import { Note } from 'tonal'
+import type { FreeSettings } from '../storage/schema'
 
 /**
  * Was geübt wird, unabhängig davon, ob es aus dem Lernpfad (Stufe) oder dem Freien Training
@@ -55,6 +56,20 @@ export function levelPractice(id: LevelId): Practice {
     return { type: 'notes', notes: lv.notes, octaves: lv.octaves, reference: true }
   }
   return { type: 'intervals', intervals: lv.intervals, directions: lv.directions, modes: lv.modes, start: lv.start }
+}
+
+/** Einstellungen des Freien Trainings als Übung */
+export function freePractice(f: FreeSettings): Practice {
+  if (f.type === 'notes') {
+    return { type: 'notes', notes: f.notes, octaves: f.octaves, reference: f.reference }
+  }
+  return {
+    type: 'intervals',
+    intervals: f.intervals,
+    directions: f.directions === 'both' ? ['up', 'down'] : [f.directions],
+    modes: f.modes === 'both' ? ['melodic', 'harmonic'] : [f.modes],
+    start: f.start,
+  }
 }
 
 /** Ein wählbarer Eintrag der Übung, zugleich der Schlüssel für Statistik und Fehlerstand */

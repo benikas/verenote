@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { recordAttempt, recordRound } from '../progress/progress'
 import { updateDone } from '../progress/marks'
-import { emptyData, type AppData } from './schema'
+import { DATA_VERSION, emptyData, type AppData } from './schema'
 import { DATA_KEY, clearData, loadData, memoryStore, saveData } from './store'
 import { exportFileName, exportJson, parseImport } from './transfer'
 
@@ -38,7 +38,7 @@ describe('Export/Import', () => {
 
   it('Export ist lesbares JSON mit Version', () => {
     const json = exportJson(emptyData())
-    expect(JSON.parse(json).version).toBe(2)
+    expect(JSON.parse(json).version).toBe(DATA_VERSION)
     expect(json).toContain('\n')
   })
 

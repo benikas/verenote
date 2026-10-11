@@ -5,16 +5,18 @@
   import { recordRound } from './progress/progress'
   import { updateDone } from './progress/marks'
   import { noteRound } from './storage/backup'
+  import { freePractice } from './theory/practice'
   import { nextLevel, type LevelId } from './theory/tasks'
   import AudioTest from './ui/AudioTest.svelte'
   import { backup, initData, persistNow, persistSoon, progress, settings } from './ui/data.svelte'
   import Exercise from './ui/Exercise.svelte'
+  import FreeTraining from './ui/FreeTraining.svelte'
   import Home from './ui/Home.svelte'
   import StartScreen from './ui/StartScreen.svelte'
   import Stats from './ui/Stats.svelte'
   import Summary from './ui/Summary.svelte'
 
-  type Screen = 'start' | 'home' | 'exercise' | 'summary' | 'test' | 'stats'
+  type Screen = 'start' | 'home' | 'free' | 'exercise' | 'summary' | 'test' | 'stats'
 
   let screen = $state<Screen>('start')
   let load = $state<LoadState>(audio.loadState)
@@ -22,7 +24,8 @@
   let summary = $state.raw<SessionSummary | null>(null)
   /** Audio läuft nicht (mehr), z. B. nach App-Wechsel: ein Tippen setzt es fort (B2) */
   let needsTap = $state(false)
-  let config = { level: '1a' as LevelId, length: 15 }
+  /** Letzte gestartete Runde (für „Nochmal“): eine Stufe oder das Freie Training */
+  let lastRun: { level: LevelId } | { free: true } = { level: '1a' }
   /** Stufen, die mit der letzten Runde „geschafft“ wurden */
   let achieved = $state.raw<LevelId[]>([])
   const dataReady = initData()
@@ -53,20 +56,38 @@
     screen = 'home'
   }
 
+  const history = (key: string) => progress.items[key]
+
   function startRound(level: LevelId, length: number) {
-    config = { level, length }
+    lastRun = { level }
     settings.level = level
     settings.length = length
-    session = new Session({ ...config, history: (key) => progress.items[key] })
+    session = new Session({ level, length, history })
     summary = null
     achieved = []
     screen = 'exercise'
   }
 
+  /** Freies Training: Übung aus den gespeicherten Einstellungen, zählt nicht für die Stufenmarkierungen */
+  function startFree(length: number) {
+    lastRun = { free: true }
+    settings.length = length
+    session = new Session({ level: null, practice: freePractice($state.snapshot(settings.free)), length, history })
+    summary = null
+    achieved = []
+    screen = 'exercise'
+  }
+
+  function again() {
+    if ('free' in lastRun) startFree(settings.length)
+    else startRound(lastRun.level, settings.length)
+  }
+
   function finish() {
     summary = session?.summary() ?? null
     if (summary) {
-      recordRound(progress, summary.level ?? 'free-notes', summary.total, summary.correct)
+      const roundLevel = summary.level ?? (summary.practice.type === 'notes' ? 'free-notes' : 'free-intervals')
+      recordRound(progress, roundLevel, summary.total, summary.correct)
       noteRound(backup)
       achieved = updateDone(progress, settings.doneThreshold)
       void persistNow()
@@ -83,7 +104,14 @@
 {#if screen === 'start'}
   <StartScreen {load} onstart={start} />
 {:else if screen === 'home'}
-  <Home onstart={startRound} ontest={() => (screen = 'test')} onstats={() => (screen = 'stats')} />
+  <Home
+    onstart={startRound}
+    onfree={() => (screen = 'free')}
+    ontest={() => (screen = 'test')}
+    onstats={() => (screen = 'stats')}
+  />
+{:else if screen === 'free'}
+  <FreeTraining onback={() => (screen = 'home')} onstart={startFree} />
 {:else if screen === 'exercise' && session}
   <Exercise {session} onfinish={finish} onexit={exit} />
 {:else if screen === 'summary' && summary}
@@ -91,8 +119,8 @@
     {summary}
     {achieved}
     nextLevel={summary.level ? nextLevel(summary.level) : null}
-    onagain={() => startRound(config.level, config.length)}
-    onnext={(id) => startRound(id, config.length)}
+    onagain={again}
+    onnext={(id) => startRound(id, settings.length)}
     onhome={() => (screen = 'home')}
   />
 {:else if screen === 'stats'}
