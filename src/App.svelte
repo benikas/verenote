@@ -10,9 +10,10 @@
   import Exercise from './ui/Exercise.svelte'
   import Home from './ui/Home.svelte'
   import StartScreen from './ui/StartScreen.svelte'
+  import Stats from './ui/Stats.svelte'
   import Summary from './ui/Summary.svelte'
 
-  type Screen = 'start' | 'home' | 'exercise' | 'summary' | 'test'
+  type Screen = 'start' | 'home' | 'exercise' | 'summary' | 'test' | 'stats'
 
   let screen = $state<Screen>('start')
   let load = $state<LoadState>(audio.loadState)
@@ -80,7 +81,7 @@
 {#if screen === 'start'}
   <StartScreen {load} onstart={start} />
 {:else if screen === 'home'}
-  <Home onstart={startRound} ontest={() => (screen = 'test')} />
+  <Home onstart={startRound} ontest={() => (screen = 'test')} onstats={() => (screen = 'stats')} />
 {:else if screen === 'exercise' && session}
   <Exercise {session} onfinish={finish} onexit={exit} />
 {:else if screen === 'summary' && summary}
@@ -90,6 +91,8 @@
     onagain={() => startRound(currentLevel(progress), config.length)}
     onhome={() => (screen = 'home')}
   />
+{:else if screen === 'stats'}
+  <Stats onback={() => (screen = 'home')} />
 {:else if screen === 'test'}
   <AudioTest {load} onback={() => (screen = 'home')} />
 {/if}

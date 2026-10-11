@@ -10,7 +10,8 @@
   let {
     onstart,
     ontest,
-  }: { onstart: (level: LevelId, length: number) => void; ontest: () => void } = $props()
+    onstats,
+  }: { onstart: (level: LevelId, length: number) => void; ontest: () => void; onstats: () => void } = $props()
 
   const DESCRIPTIONS: Record<LevelId, string> = {
     '1a': 'Nur drei Töne, gut zu unterscheiden. Der beste Einstieg.',
@@ -153,6 +154,7 @@
   </div>
 
   <button class="go" onclick={() => onstart(current, settings.length)}>Runde starten · Stufe {current}</button>
+  <button class="link" onclick={onstats}>Statistik und Daten</button>
   <button class="link" onclick={ontest}>Ton-Prüfung (alle Töne anhören)</button>
 </main>
 
