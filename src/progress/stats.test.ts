@@ -55,3 +55,48 @@ describe('Statistik', () => {
     expect(s.rounds.at(-1)?.correct).toBe(14 % 11)
   })
 })
+
+describe('Statistik: Intervalle (3.7)', () => {
+  it('leer: 13 Intervalle ohne Versuche', () => {
+    const s = buildStats(emptyProgress())
+    expect(s.intervals).toHaveLength(13)
+    expect(s.intervals.every((i) => i.attempts === 0 && i.accuracy === null)).toBe(true)
+    expect(s.intervals[4].name).toBe('Grosse Terz')
+    expect(s.intervalAttempts).toBe(0)
+  })
+
+  it('Zahlen stimmen mit den gespeicherten Daten überein, je Richtung und gesamt', () => {
+    const p = emptyProgress()
+    recordAttempt(p, '2a', 'int:7:up', true)
+    recordAttempt(p, '2a', 'int:7:up', true)
+    recordAttempt(p, '2a', 'int:7:up', false)
+    recordAttempt(p, '2e', 'int:7:down', false)
+    recordAttempt(p, '2f', 'int:7:harm', true)
+    recordAttempt(p, null, 'int:4:up', true) // Freies Training zählt mit
+    recordAttempt(p, '1a', 'E|C', true)
+    recordAttempt(p, null, 'E|-', false) // ohne Referenz zählt für den Ton E
+
+    const s = buildStats(p)
+    const q = s.intervals.find((i) => i.semitones === 7)!
+    expect(q).toMatchObject({ name: 'Quinte', hits: 3, misses: 2, attempts: 5, accuracy: 3 / 5 })
+    expect(q.up).toEqual({ hits: 2, misses: 1 })
+    expect(q.down).toEqual({ hits: 0, misses: 1 })
+    expect(q.harm).toEqual({ hits: 1, misses: 0 })
+    expect(s.intervals.find((i) => i.semitones === 4)).toMatchObject({ hits: 1, attempts: 1, accuracy: 1 })
+    expect(s.intervalAttempts).toBe(6)
+    // Töne: Intervall-Schlüssel stören nicht, „E|-“ zählt zu E
+    expect(s.tones.find((t) => t.note === 'E')).toMatchObject({ hits: 1, misses: 1, attempts: 2 })
+    expect(s.toneAttempts).toBe(2)
+    expect(s.totalAttempts).toBe(8)
+  })
+
+  it('Freies Training ändert die Stufen-Quote nicht, steht aber in den Runden', () => {
+    const p = emptyProgress()
+    recordAttempt(p, null, 'int:4:up', false)
+    recordRound(p, 'free-intervals', 10, 4, new Date('2026-10-12T10:00:00Z'))
+    const s = buildStats(p)
+    expect(s.levels.every((l) => l.attempts === 0 && l.mark === 'neu')).toBe(true)
+    expect(s.rounds).toHaveLength(1)
+    expect(s.rounds[0]).toMatchObject({ level: 'free-intervals', accuracy: 0.4 })
+  })
+})

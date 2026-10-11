@@ -11,6 +11,16 @@
   let { onback }: { onback: () => void } = $props()
 
   const stats = $derived(buildStats(progress, 10))
+  /** Kurzbezeichnung der Stufe bzw. des Freien Trainings für die Rundenliste */
+  const roundLabel = (level: string) => (level === 'free-notes' ? 'Fr. T' : level === 'free-intervals' ? 'Fr. I' : level)
+  const variantText = (i: (typeof stats.intervals)[number]) =>
+    [
+      i.up.hits + i.up.misses > 0 ? `↑ ${i.up.hits}/${i.up.hits + i.up.misses}` : '',
+      i.down.hits + i.down.misses > 0 ? `↓ ${i.down.hits}/${i.down.hits + i.down.misses}` : '',
+      i.harm.hits + i.harm.misses > 0 ? `gleichzeitig ${i.harm.hits}/${i.harm.hits + i.harm.misses}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
   const pct = (x: number) => `${Math.round(x * 100)} %`
   const dateOf = (iso: string) => new Date(iso).toLocaleDateString('de-CH', { day: 'numeric', month: 'numeric' })
 
@@ -97,7 +107,24 @@
       </li>
     {/each}
   </ul>
-  <p class="foot">Alle Versuche seit Beginn, je Zielton.</p>
+  <p class="foot">Alle Versuche seit Beginn, je Zielton (Lernpfad und Freies Training).</p>
+
+  <h2>Intervalle</h2>
+  <ul class="rows ivs">
+    {#each stats.intervals as i (i.semitones)}
+      <li>
+        <span class="name">{i.name}</span>
+        {#if i.accuracy === null}
+          <span class="val muted">–</span>
+        {:else}
+          <span class="bar"><span class="fill" class:low={i.accuracy < 0.6} style:width="{i.accuracy * 100}%"></span></span>
+          <span class="val">{pct(i.accuracy)} <small>({i.hits}/{i.attempts})</small></span>
+          <small class="detail">{variantText(i)}</small>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+  <p class="foot">Alle Versuche seit Beginn, je Intervall und zusammen für alle Richtungen. Darunter: aufwärts, abwärts, gleichzeitig (Treffer/Versuche).</p>
 
   <h2>Letzte Runden</h2>
   {#if stats.rounds.length === 0}
@@ -108,11 +135,15 @@
         <div class="col">
           <span class="pct">{Math.round(r.accuracy * 100)}</span>
           <span class="colbar"><span class="colfill" style:height="{r.accuracy * 100}%"></span></span>
-          <span class="lv">{r.level}</span>
+          <span class="lv">{roundLabel(r.level)}</span>
           <span class="dt">{dateOf(r.at)}</span>
         </div>
       {/each}
     </div>
+  {/if}
+
+  {#if stats.rounds.some((r) => r.level.startsWith('free'))}
+    <p class="foot">Fr. T / Fr. I = Freies Training, Grundtöne bzw. Intervalle.</p>
   {/if}
 
   <h2>Daten</h2>
@@ -210,6 +241,13 @@
   }
   .rows li:last-child {
     border-bottom: 0;
+  }
+  .ivs li {
+    grid-template-columns: 8.5em 1fr auto;
+  }
+  .detail {
+    grid-column: 1 / 4;
+    margin-top: -4px;
   }
   .tones li {
     grid-template-columns: 4.5em 1fr auto;
