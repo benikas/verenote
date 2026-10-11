@@ -21,6 +21,8 @@ export interface SequenceOptions {
   noteDuration?: number
   /** Abstand zwischen Tonanfängen in Sekunden */
   interval?: number
+  /** Anschlagstärke 0–1 (Standard 1); kleiner = leiser */
+  velocity?: number
   /** Wird direkt nach dem Anschlag jedes Tons aufgerufen (index ab 0) */
   onNote?: (index: number, note: string) => void
 }
@@ -131,12 +133,12 @@ export class AudioEngine {
       })
   }
 
-  /** Einzelnen Ton sofort spielen. note z. B. "C4", "F#3". duration in Sekunden. */
-  play(note: string, duration = 1.2): void {
+  /** Einzelnen Ton sofort spielen. note z. B. "C4", "F#3". duration in Sekunden, velocity 0–1. */
+  play(note: string, duration = 1.2, velocity = 1): void {
     if (!this.unlocked) return
     const t = Tone.immediate()
-    if (this.sampler) this.sampler.triggerAttackRelease(note, duration, t)
-    else this.synth?.triggerAttackRelease(note, duration, t)
+    if (this.sampler) this.sampler.triggerAttackRelease(note, duration, t, velocity)
+    else this.synth?.triggerAttackRelease(note, duration, t, velocity)
   }
 
   /**
@@ -145,12 +147,12 @@ export class AudioEngine {
    * eine neue Sequenz die Wiedergabe abbricht.
    */
   async playSequence(notes: string[], opts: SequenceOptions = {}): Promise<void> {
-    const { noteDuration = 1.2, interval = 1.4, onNote } = opts
+    const { noteDuration = 1.2, interval = 1.4, velocity = 1, onNote } = opts
     const myRun = ++this.runId
     this.releaseAll()
     for (let i = 0; i < notes.length; i++) {
       if (myRun !== this.runId) return
-      this.play(notes[i], noteDuration)
+      this.play(notes[i], noteDuration, velocity)
       onNote?.(i, notes[i])
       await sleep(interval * 1000)
     }

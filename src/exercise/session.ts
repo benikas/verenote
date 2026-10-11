@@ -1,6 +1,6 @@
 import { samePitchClass, pitchClass } from '../theory/notes'
 import { getLevel, itemKey, makeTask, type LevelId, type Task } from '../theory/tasks'
-import { pickWeighted, type Rng } from './rng'
+import { pickWeighted, type Rng } from '../shared/rng'
 
 /**
  * Übungs-Engine für Grundton-Sessions. Kennt weder UI noch Audio:

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { audio, type LoadState } from '../audio/engine'
+  import { taskTiming } from '../exercise/settings'
+  import { settings } from './settings.svelte'
 
   let { load, onback }: { load: LoadState; onback: () => void } = $props()
 
@@ -22,7 +24,7 @@
   </p>
 
   <button class="wide" onclick={() => audio.play('C4')}>Referenzton C4</button>
-  <button class="wide" onclick={() => audio.playSequence(['C4', 'E4', 'G4'])}>
+  <button class="wide" onclick={() => audio.playSequence(['C4', 'E4', 'G4'], taskTiming(settings.tempo))}>
     Folge C – E – G
   </button>
 

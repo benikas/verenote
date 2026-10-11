@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickWeighted, seededRng } from './rng'
+import { pickWeighted, seededRng } from '../shared/rng'
 import { Session } from './session'
 
 const make = (level: '1a' | '1b' | '1c' = '1c', length = 10, seed = 1) =>

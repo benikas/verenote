@@ -2,8 +2,16 @@
   import { onDestroy, onMount } from 'svelte'
   import { audio } from '../audio/engine'
   import type { AnswerResult, Session } from '../exercise/session'
+  import {
+    AUTO_ADVANCE_MS,
+    NEUTRAL_PLAYBACK,
+    shouldNeutralize,
+    taskTiming,
+  } from '../exercise/settings'
+  import { makeNeutralization } from '../theory/neutral'
   import { getLevel, type Task } from '../theory/tasks'
   import Keyboard from './Keyboard.svelte'
+  import { settings } from './settings.svelte'
 
   let {
     session,
@@ -11,12 +19,10 @@
     onexit,
   }: { session: Session; onfinish: () => void; onexit: () => void } = $props()
 
-  /** Tempo der Wiedergabe: Länge der Töne und Abstand zwischen den Tonanfängen (Sekunden) */
-  const TIMING = { noteDuration: 1.1, interval: 1.25 }
   /** Pause, bis nach einer falschen Antwort die Lösung erklingt (ms) */
   const SOLUTION_DELAY = 900
 
-  type Phase = 'listening' | 'answering' | 'feedback'
+  type Phase = 'neutralizing' | 'listening' | 'answering' | 'feedback'
 
   const level = $derived(getLevel(session.level))
   let phase = $state<Phase>('listening')
@@ -25,45 +31,77 @@
   let marks = $state<Record<string, 'correct' | 'wrong'>>({})
   let answered = $state(0)
   let correct = $state(0)
-  let solutionTimer: ReturnType<typeof setTimeout> | undefined
+  /** Nach einer richtigen Antwort geht es automatisch weiter, außer man hört noch einmal nach */
+  let manualNext = $state(false)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let introToken = 0
 
+  const timing = $derived(taskTiming(settings.tempo))
   const isLast = $derived(answered >= session.length)
+  const wrong = $derived(phase === 'feedback' && result !== null && !result.correct)
+  const showNext = $derived(wrong || (phase === 'feedback' && manualNext))
+
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
   onMount(begin)
   onDestroy(() => {
-    clearTimeout(solutionTimer)
+    introToken += 1
+    clearTimeout(timer)
     audio.stop()
   })
 
-  function begin() {
-    clearTimeout(solutionTimer)
+  async function begin() {
+    clearTimeout(timer)
+    const token = ++introToken
     task = session.next()
     result = null
     marks = {}
+    manualNext = false
+
+    // Gehör neutralisieren: ab der zweiten Aufgabe, leiser, danach kurze Pause
+    if (shouldNeutralize(settings, session.answered)) {
+      phase = 'neutralizing'
+      const notes = makeNeutralization(settings.neutralLength, Math.random, task.reference)
+      await audio.playSequence(notes, {
+        noteDuration: NEUTRAL_PLAYBACK.noteDuration,
+        interval: NEUTRAL_PLAYBACK.interval,
+        velocity: NEUTRAL_PLAYBACK.velocity,
+      })
+      if (token !== introToken) return
+      await sleep(NEUTRAL_PLAYBACK.pauseMs)
+      if (token !== introToken) return
+    }
+
     phase = 'listening'
-    void playTask()
+    await playTask()
   }
 
   /** Referenzton, dann Zielton. Nach dem Zielton darf geantwortet werden. */
   async function playTask() {
     if (!task) return
     await audio.playSequence([task.reference, task.target], {
-      ...TIMING,
+      ...timing,
       onNote: (i) => {
         if (i === 1 && phase === 'listening') phase = 'answering'
       },
     })
   }
 
+  /** Wer nach einer richtigen Antwort noch einmal hört, bestimmt selbst, wann es weitergeht. */
+  function takeOver() {
+    clearTimeout(timer)
+    if (phase === 'feedback') manualNext = true
+  }
+
   function playReference() {
     if (!task) return
-    clearTimeout(solutionTimer)
+    takeOver()
     audio.stop()
     audio.play(task.reference, 1.6)
   }
 
   function replay() {
-    clearTimeout(solutionTimer)
+    takeOver()
     void playTask()
   }
 
@@ -77,18 +115,20 @@
     if (r.correct) correct += 1
     marks = r.correct ? { [r.expected]: 'correct' } : { [r.given]: 'wrong', [r.expected]: 'correct' }
     phase = 'feedback'
-    // Falsch: Lösung vorspielen, im Kontext des Referenztons
-    if (!r.correct) solutionTimer = setTimeout(() => void playTask(), SOLUTION_DELAY)
+    // Falsch: Lösung vorspielen, im Kontext des Referenztons (ohne Neutralisierung).
+    // Richtig: nach kurzer Pause automatisch weiter.
+    timer = setTimeout(() => (r.correct ? next() : void playTask()), r.correct ? AUTO_ADVANCE_MS : SOLUTION_DELAY)
   }
 
   /** Dein Ton und die Lösung direkt nacheinander, nach dem Referenzton */
   function compare() {
     if (!task || !result || result.correct) return
-    clearTimeout(solutionTimer)
-    void audio.playSequence([task.reference, `${result.given}4`, task.target], TIMING)
+    clearTimeout(timer)
+    void audio.playSequence([task.reference, `${result.given}4`, task.target], timing)
   }
 
   function next() {
+    clearTimeout(timer)
     if (isLast) {
       audio.stop()
       onfinish()
@@ -96,7 +136,7 @@
   }
 </script>
 
-<main class="ex">
+<main class="ex" data-phase={phase}>
   <header>
     <button class="close" aria-label="Runde beenden" onclick={onexit}>✕</button>
     <div class="count">
@@ -109,7 +149,9 @@
   <section class="stage">
     <p class="prompt" aria-live="polite">
       <span>
-        {#if phase === 'listening'}
+        {#if phase === 'neutralizing'}
+          <span class="muted">Ohr wird neutralisiert …</span>
+        {:else if phase === 'listening'}
           Hör zu …
         {:else if phase === 'answering'}
           Welcher Ton war das?
@@ -122,9 +164,11 @@
     </p>
 
     <div class="actions">
-      <button onclick={replay}>▶ Nochmal</button>
-      <button onclick={playReference}>Referenz {task ? task.reference.slice(0, -1) : 'C'}</button>
-      {#if phase === 'feedback' && result && !result.correct}
+      <button onclick={replay} disabled={phase === 'neutralizing'}>▶ Nochmal</button>
+      <button onclick={playReference} disabled={phase === 'neutralizing'}
+        >Referenz {task ? task.reference.slice(0, -1) : 'C'}</button
+      >
+      {#if wrong}
         <button onclick={compare}>Vergleich</button>
       {/if}
     </div>
@@ -132,10 +176,10 @@
     <!-- Platz immer reservieren, damit beim Feedback nichts springt -->
     <button
       class="next"
-      class:hidden={phase !== 'feedback'}
-      disabled={phase !== 'feedback'}
-      aria-hidden={phase !== 'feedback'}
-      tabindex={phase === 'feedback' ? 0 : -1}
+      class:hidden={!showNext}
+      disabled={!showNext}
+      aria-hidden={!showNext}
+      tabindex={showNext ? 0 : -1}
       onclick={next}>{isLast ? 'Ergebnis ansehen' : 'Weiter'}</button
     >
   </section>
@@ -213,6 +257,10 @@
     align-items: center;
     justify-content: center;
   }
+  .muted {
+    color: var(--muted);
+    font-size: 1.1rem;
+  }
   .good {
     color: var(--good);
     font-weight: 600;
@@ -239,6 +287,9 @@
   }
   .actions button:active {
     background: var(--accent);
+  }
+  .actions button:disabled {
+    opacity: 0.4;
   }
   .next {
     background: var(--accent);
