@@ -1,11 +1,25 @@
 import { samePitchClass, pitchClass } from '../theory/notes'
-import { getLevel, itemKey, makeTask, type LevelId, type Task } from '../theory/tasks'
+import type { LevelId } from '../theory/tasks'
+import {
+  expectedAnswer,
+  itemLabel,
+  levelPractice,
+  poolFor,
+  taskFromItem,
+  taskKey,
+  type ExerciseTask,
+  type PoolItem,
+  type Practice,
+} from '../theory/practice'
 import { pickWeighted, type Rng } from '../shared/rng'
+import type { ItemStat as StoredItemStat } from '../storage/schema'
+import { historyWeight } from './weights'
 
 /**
- * Übungs-Engine für Grundton-Sessions. Kennt weder UI noch Audio:
+ * Übungs-Engine für Grundtöne und Intervalle. Kennt weder UI noch Audio:
  * erzeugt Aufgaben, bewertet Antworten und lässt Fehler öfter wiederholen.
- * Der Fortschritt lebt nur in der Session (Speichern kommt erst in M2).
+ * Gewicht eines Items = Fehlerstand aus früheren Runden (`history`) + Fehler in dieser Session.
+ * Gespeichert wird von der App.
  */
 
 /** Maximale Zusatzgewichtung eines oft verfehlten Items */
@@ -15,19 +29,32 @@ const MISS_PENALTY = 2
 const HIT_RELIEF = 1
 
 export interface SessionConfig {
-  level: LevelId
+  /** Stufe des Lernpfads; null im Freien Training (dann ist `practice` Pflicht) */
+  level: LevelId | null
+  /** Was geübt wird. Standard: die Übung der Stufe */
+  practice?: Practice
   /** Anzahl Aufgaben pro Session, üblich 10–20 */
   length: number
   rng?: Rng
+  /** Gespeicherter Fehlerstand eines Items (Schlüssel wie "E|C" oder "int:4:up") */
+  history?: (key: string) => StoredItemStat | undefined
 }
 
 export interface AnswerResult {
-  task: Task
-  /** Antwort als Pitch Class, z. B. "D" */
+  task: ExerciseTask
+  /** Antwort: Pitch Class ("D") bei Grundtönen, Halbtöne ("4") bei Intervallen */
   given: string
-  /** Richtige Antwort als Pitch Class, z. B. "E" */
+  /** Richtige Antwort in derselben Form */
   expected: string
   correct: boolean
+}
+
+/** Ergebnis je Item der Übung (Ton bzw. Intervall) */
+export interface ItemRow {
+  key: string
+  label: string
+  attempts: number
+  correct: number
 }
 
 export interface NoteStat {
@@ -38,13 +65,16 @@ export interface NoteStat {
 }
 
 export interface SessionSummary {
-  level: LevelId
+  level: LevelId | null
+  practice: Practice
   total: number
   correct: number
   /** Trefferquote 0–1 (0 bei keiner Antwort) */
   accuracy: number
-  /** Pro Zielton, in der Reihenfolge der Stufe */
+  /** Pro Zielton, in der Reihenfolge der Stufe (nur Grundtöne, sonst leer) */
   perNote: NoteStat[]
+  /** Pro Item (Ton bzw. Intervall) in der Reihenfolge der Übung */
+  perItem: ItemRow[]
   /** Alle gegebenen Antworten in Reihenfolge */
   answers: AnswerResult[]
 }
@@ -57,28 +87,35 @@ interface ItemStat {
 }
 
 export class Session {
-  readonly level: LevelId
+  readonly level: LevelId | null
+  readonly practice: Practice
   readonly length: number
   private readonly rng: Rng
-  private readonly notes: readonly string[]
+  private readonly pool: PoolItem[]
+  private readonly history: (key: string) => StoredItemStat | undefined
   private readonly stats = new Map<string, ItemStat>()
   private readonly results: AnswerResult[] = []
   private issued = 0
-  private open: Task | null = null
-  private lastTarget: string | null = null
+  private open: ExerciseTask | null = null
+  private lastKey: string | null = null
 
   constructor(config: SessionConfig) {
     if (!Number.isInteger(config.length) || config.length < 1) {
       throw new Error('Die Session braucht mindestens eine Aufgabe')
     }
+    const practice = config.practice ?? (config.level ? levelPractice(config.level) : null)
+    if (!practice) throw new Error('Die Session braucht eine Stufe oder eine Übung')
     this.level = config.level
+    this.practice = practice
     this.length = config.length
     this.rng = config.rng ?? Math.random
-    this.notes = getLevel(config.level).notes
+    this.history = config.history ?? (() => undefined)
+    this.pool = poolFor(practice)
+    if (this.pool.length === 0) throw new Error('Die Übung enthält nichts zum Üben')
   }
 
   /** Aufgabe, auf die noch eine Antwort fehlt (oder null). */
-  get current(): Task | null {
+  get current(): ExerciseTask | null {
     return this.open
   }
 
@@ -93,29 +130,37 @@ export class Session {
   }
 
   /** Nächste Aufgabe erzeugen. Erst nach der Antwort auf die vorige erlaubt. */
-  next(): Task {
+  next(): ExerciseTask {
     if (this.open) throw new Error('Die aktuelle Aufgabe ist noch nicht beantwortet')
     if (this.issued >= this.length) throw new Error('Die Session ist bereits zu Ende')
 
-    const target = this.pickTarget()
-    const octaves = getLevel(this.level).octaves
-    const octave = octaves.length === 1 ? octaves[0] : octaves[Math.min(octaves.length - 1, Math.floor(this.rng() * octaves.length))]
+    const item = this.pickItem()
     this.issued += 1
-    this.lastTarget = target
-    this.open = makeTask(this.issued, this.level, target, octave)
+    this.lastKey = item.key
+    this.open = taskFromItem(item, this.issued, this.level, this.practice, this.rng)
     return this.open
   }
 
-  /** Antwort bewerten. note darf mit oder ohne Oktave angegeben werden ("E" oder "E4"). */
-  answer(note: string): AnswerResult {
+  /**
+   * Antwort bewerten. Grundtöne: Ton mit oder ohne Oktave ("E" oder "E4").
+   * Intervalle: Abstand in Halbtönen ("4" oder 4).
+   */
+  answer(answer: string | number): AnswerResult {
     const task = this.open
     if (!task) throw new Error('Es gibt keine offene Aufgabe')
 
-    const given = pitchClass(note)
-    const expected = pitchClass(task.target)
-    const correct = samePitchClass(given, expected)
+    const expected = expectedAnswer(task)
+    let given: string
+    let correct: boolean
+    if (task.kind === 'notes') {
+      given = pitchClass(String(answer))
+      correct = samePitchClass(given, expected)
+    } else {
+      given = String(answer)
+      correct = given === expected
+    }
 
-    const stat = this.stat(itemKey(task))
+    const stat = this.stat(taskKey(task))
     stat.attempts += 1
     if (correct) {
       stat.correct += 1
@@ -133,33 +178,42 @@ export class Session {
   summary(): SessionSummary {
     const correct = this.results.filter((r) => r.correct).length
     const total = this.results.length
-    const perNote = this.notes.map((note): NoteStat => {
-      const mine = this.results.filter((r) => r.expected === note)
-      return { note, attempts: mine.length, correct: mine.filter((r) => r.correct).length }
+    const perItem = this.pool.map((item): ItemRow => {
+      const mine = this.results.filter((r) => taskKey(r.task) === item.key)
+      return {
+        key: item.key,
+        label: itemLabel(item.key),
+        attempts: mine.length,
+        correct: mine.filter((r) => r.correct).length,
+      }
     })
+    const perNote =
+      this.practice.type === 'notes'
+        ? this.practice.notes.map((note): NoteStat => {
+            const mine = this.results.filter((r) => r.expected === note)
+            return { note, attempts: mine.length, correct: mine.filter((r) => r.correct).length }
+          })
+        : []
     return {
       level: this.level,
+      practice: this.practice,
       total,
       correct,
       accuracy: total === 0 ? 0 : correct / total,
       perNote,
+      perItem,
       answers: [...this.results],
     }
   }
 
   /**
-   * Gewichtete Wahl: Töne mit Fehlern kommen öfter dran. Derselbe Zielton
-   * erscheint nie zweimal hintereinander, solange die Stufe mehrere Töne hat.
+   * Gewichtete Wahl: Items mit Fehlern (früher und in dieser Session) kommen öfter dran, neue
+   * Items vor sicheren. Dasselbe Item erscheint nie zweimal hintereinander, solange es mehrere gibt.
    */
-  private pickTarget(): string {
-    const candidates = this.notes.length > 1 ? this.notes.filter((n) => n !== this.lastTarget) : this.notes
-    const weights = candidates.map((n) => 1 + this.penaltyFor(n))
+  private pickItem(): PoolItem {
+    const candidates = this.pool.length > 1 ? this.pool.filter((i) => i.key !== this.lastKey) : this.pool
+    const weights = candidates.map((i) => historyWeight(this.history(i.key)) + (this.stats.get(i.key)?.penalty ?? 0))
     return candidates[pickWeighted(weights, this.rng)]
-  }
-
-  private penaltyFor(note: string): number {
-    const key = itemKey(makeTask(0, this.level, note))
-    return this.stats.get(key)?.penalty ?? 0
   }
 
   private stat(key: string): ItemStat {

@@ -57,7 +57,7 @@
     config = { level, length }
     settings.level = level
     settings.length = length
-    session = new Session(config)
+    session = new Session({ ...config, history: (key) => progress.items[key] })
     summary = null
     achieved = []
     screen = 'exercise'
@@ -66,7 +66,7 @@
   function finish() {
     summary = session?.summary() ?? null
     if (summary) {
-      recordRound(progress, summary.level, summary.total, summary.correct)
+      recordRound(progress, summary.level ?? 'free-notes', summary.total, summary.correct)
       noteRound(backup)
       achieved = updateDone(progress, settings.doneThreshold)
       void persistNow()
@@ -90,7 +90,7 @@
   <Summary
     {summary}
     {achieved}
-    nextLevel={nextLevel(summary.level)}
+    nextLevel={summary.level ? nextLevel(summary.level) : null}
     onagain={() => startRound(config.level, config.length)}
     onnext={(id) => startRound(id, config.length)}
     onhome={() => (screen = 'home')}

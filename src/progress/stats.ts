@@ -1,4 +1,4 @@
-import { RECENT_ATTEMPTS, type Progress } from '../storage/schema'
+import { RECENT_ATTEMPTS, type Progress, type RoundLevel } from '../storage/schema'
 import { CHROMATIC_SHARPS } from '../theory/notes'
 import { LEVELS, type LevelId } from '../theory/tasks'
 import { levelMark, type Mark } from './marks'
@@ -27,7 +27,7 @@ export interface ToneStat {
 
 export interface RoundStat {
   at: string
-  level: LevelId
+  level: RoundLevel
   total: number
   correct: number
   /** 0–1 */

@@ -9,7 +9,7 @@ import {
   semitonesBetween,
   withOctave,
 } from './notes'
-import { LEVELS, getLevel, itemKey, makeTask, nextLevel, octaveOffset } from './tasks'
+import { LEVELS, NOTE_LEVELS, getLevel, getNoteLevel, itemKey, makeTask, nextLevel, octaveOffset } from './tasks'
 
 describe('Noten', () => {
   it('Stammtöne sind C bis B in englischer Schreibweise', () => {
@@ -51,8 +51,8 @@ describe('Noten', () => {
 
 describe('Stufen 1a–e', () => {
   it('sind 1a bis 1e; 1a–c wachsen schrittweise', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual(['1a', '1b', '1c', '1d', '1e'])
-    const [a, b, c] = LEVELS
+    expect(NOTE_LEVELS.map((l) => l.id)).toEqual(['1a', '1b', '1c', '1d', '1e'])
+    const [a, b, c] = NOTE_LEVELS
     expect(a.notes).toEqual(['C', 'E', 'G'])
     expect(b.notes).toEqual(['C', 'D', 'E', 'F', 'G'])
     expect(c.notes).toEqual([...STAMMTOENE])
@@ -61,13 +61,13 @@ describe('Stufen 1a–e', () => {
   })
 
   it('1d: Stammtöne in den Oktaven 3–5; 1e: alle 12 Töne in Oktave 4', () => {
-    const d = getLevel('1d')
-    const e = getLevel('1e')
+    const d = getNoteLevel('1d')
+    const e = getNoteLevel('1e')
     expect(d.notes).toEqual([...STAMMTOENE])
     expect(d.octaves).toEqual([3, 4, 5])
     expect(e.notes).toHaveLength(12)
     expect(e.octaves).toEqual([4])
-    for (const l of LEVELS.slice(0, 3)) expect(l.octaves).toEqual([4])
+    for (const l of NOTE_LEVELS.slice(0, 3)) expect(l.octaves).toEqual([4])
   })
 
   it('makeTask: Oktave und Lage (1d), schwarze Tasten (1e)', () => {
@@ -83,11 +83,12 @@ describe('Stufen 1a–e', () => {
   it('nextLevel: Reihenfolge 1a → … → 1e', () => {
     expect(nextLevel('1a')).toBe('1b')
     expect(nextLevel('1d')).toBe('1e')
-    expect(nextLevel('1e')).toBeNull()
+    expect(nextLevel('1e')).toBe('2a')
+    expect(nextLevel('2f')).toBeNull()
   })
 
   it('getLevel findet Stufen und wirft bei unbekannten', () => {
-    expect(getLevel('1b').notes).toHaveLength(5)
+    expect(getNoteLevel('1b').notes).toHaveLength(5)
     expect(() => getLevel('9z' as never)).toThrow()
   })
 })
@@ -95,7 +96,7 @@ describe('Stufen 1a–e', () => {
 describe('Aufgabe als Daten', () => {
   it('Referenz ist C4, Zielton liegt in Oktave 4', () => {
     const t = makeTask(1, '1c', 'E')
-    expect(t).toEqual({ id: 1, level: '1c', reference: 'C4', target: 'E4' })
+    expect(t).toEqual({ kind: 'notes', id: 1, level: '1c', reference: 'C4', target: 'E4' })
     expect(t.reference).toBe(REFERENCE_NOTE)
   })
 
@@ -104,7 +105,7 @@ describe('Aufgabe als Daten', () => {
   })
 
   it('jeder Ton jeder Stufe lässt sich als Aufgabe bauen', () => {
-    for (const level of LEVELS) {
+    for (const level of NOTE_LEVELS) {
       for (const n of level.notes) {
         expect(makeTask(1, level.id, n).target).toBe(`${n}4`)
       }

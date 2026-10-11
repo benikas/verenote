@@ -11,8 +11,12 @@
   import { recordAttempt } from '../progress/progress'
   import { displayName, pitchClass, withOctave } from '../theory/notes'
   import { makeNeutralization } from '../theory/neutral'
-  import { getLevel, itemKey, octaveOffset, type Task } from '../theory/tasks'
+  import { intervalName } from '../theory/intervals'
+  import { taskKey, type ExerciseTask } from '../theory/practice'
+  import { octaveOffset } from '../theory/tasks'
+  import { Note } from 'tonal'
   import { persistNow, progress, settings } from './data.svelte'
+  import IntervalButtons from './IntervalButtons.svelte'
   import Keyboard from './Keyboard.svelte'
 
   let {
@@ -26,9 +30,9 @@
 
   type Phase = 'neutralizing' | 'listening' | 'answering' | 'feedback'
 
-  const level = $derived(getLevel(session.level))
+  const practice = $derived(session.practice)
   let phase = $state<Phase>('listening')
-  let task = $state<Task | null>(null)
+  let task = $state<ExerciseTask | null>(null)
   let result = $state<AnswerResult | null>(null)
   let marks = $state<Record<string, 'correct' | 'wrong'>>({})
   let answered = $state(0)
@@ -43,13 +47,25 @@
   const wrong = $derived(phase === 'feedback' && result !== null && !result.correct)
   const showNext = $derived(wrong || (phase === 'feedback' && manualNext))
   /** Oktave des Zieltons: Die Klaviatur zeigt immer diese Lage (Stufe 1d: 3, 4 oder 5) */
-  const targetOctave = $derived(task ? Number(task.target.slice(pitchClass(task.target).length)) : 4)
-  const multiOctave = $derived(level.octaves.length > 1)
+  const targetOctave = $derived(
+    task?.kind === 'notes' ? Number(task.target.slice(pitchClass(task.target).length)) : 4,
+  )
+  /** Lageanzeige (nur Grundtöne mit Referenz und mehreren Oktaven, z. B. Stufe 1d) */
+  const multiOctave = $derived(practice.type === 'notes' && practice.reference && practice.octaves.length > 1)
+  /** Name des Starttons bzw. Referenztons, für den Button */
+  const refButton = $derived.by(() => {
+    if (!task) return null
+    if (task.kind === 'intervals') return { label: 'Startton', note: task.start }
+    return task.reference ? { label: `Referenz ${task.reference.slice(0, -1)}`, note: task.reference } : null
+  })
   const lage = $derived.by(() => {
-    if (!task) return ''
+    if (!task || task.kind !== 'notes') return ''
     const o = octaveOffset(task)
     return o < 0 ? 'eine Oktave tiefer als der Referenzton' : o > 0 ? 'eine Oktave höher als der Referenzton' : 'in der Oktave des Referenztons'
   })
+
+  /** Antwort als lesbarer Name: Ton ("C#/Db") oder Intervall ("Grosse Terz") */
+  const answerName = (a: string) => (task?.kind === 'intervals' ? intervalName(Number(a)) : displayName(a))
 
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -107,7 +123,8 @@
     // Gehör neutralisieren: ab der zweiten Aufgabe, leiser, danach kurze Pause
     if (shouldNeutralize(settings, session.answered)) {
       phase = 'neutralizing'
-      const notes = makeNeutralization(settings.neutralLength, Math.random, task.reference)
+      const avoid = task.kind === 'intervals' ? task.start : (task.reference ?? task.target)
+      const notes = makeNeutralization(settings.neutralLength, Math.random, avoid)
       const ok = await audio.playSequence(notes, {
         noteDuration: NEUTRAL_PLAYBACK.noteDuration,
         interval: NEUTRAL_PLAYBACK.interval,
@@ -123,16 +140,28 @@
     await playTask()
   }
 
-  /** Referenzton, dann Zielton. Nach dem Zielton darf geantwortet werden. */
+  /**
+   * Aufgabe abspielen: Grundton = Referenz, dann Zielton (ohne Referenz nur der Zielton);
+   * Intervall = Startton, dann zweiter Ton, oder beide gleichzeitig. Danach darf geantwortet werden.
+   */
   async function playTask() {
     if (!task) return
     const myIntro = introToken
-    const ok = await audio.playSequence([task.reference, task.target], {
-      ...timing,
-      onNote: (i) => {
-        if (i === 1 && phase === 'listening') phase = 'answering'
-      },
-    })
+    let ok: boolean
+    if (task.kind === 'intervals' && task.mode === 'harmonic') {
+      const p = audio.playChord([task.start, task.second])
+      if (phase === 'listening') phase = 'answering' // gleich nach dem Anschlag antwortbar
+      ok = await p
+    } else {
+      const notes = task.kind === 'intervals' ? [task.start, task.second] : task.reference ? [task.reference, task.target] : [task.target]
+      const last = notes.length - 1
+      ok = await audio.playSequence(notes, {
+        ...timing,
+        onNote: (i) => {
+          if (i === last && phase === 'listening') phase = 'answering'
+        },
+      })
+    }
     // Audio war weg, ohne dass die Engine es gemeldet hat (Unterbrechung schon vermerkt)
     if (!ok && myIntro === introToken && audio.needsTap) handleInterrupt()
   }
@@ -144,10 +173,10 @@
   }
 
   function playReference() {
-    if (!task) return
+    if (!task || !refButton) return
     takeOver()
     audio.stop()
-    audio.play(task.reference, 1.6)
+    audio.play(refButton.note, 1.6)
   }
 
   function replay() {
@@ -155,12 +184,13 @@
     void playTask()
   }
 
-  function answer(note: string) {
+  /** Antwort: Grundton als Pitch Class ("E"), Intervall als Halbtonzahl */
+  function answer(given: string | number) {
     if (!task || phase !== 'answering') return
     audio.stop()
-    audio.play(withOctave(note, targetOctave), 1.4) // die Klaviatur zeigt die Lage des Zieltons
-    const r = session.answer(note)
-    recordAttempt(progress, session.level, itemKey(r.task), r.correct)
+    if (task.kind === 'notes') audio.play(withOctave(String(given), targetOctave), 1.4) // die Klaviatur zeigt die Lage des Zieltons
+    const r = session.answer(given)
+    recordAttempt(progress, session.level, taskKey(r.task), r.correct)
     void persistNow() // nach jeder Antwort sichern
     result = r
     answered = session.answered
@@ -172,11 +202,25 @@
     timer = setTimeout(() => (r.correct ? next() : void playTask()), r.correct ? AUTO_ADVANCE_MS : SOLUTION_DELAY)
   }
 
-  /** Dein Ton und die Lösung direkt nacheinander, nach dem Referenzton */
-  function compare() {
+  /** Deine Antwort und die Lösung direkt nacheinander, nach Referenz- bzw. Startton */
+  async function compare() {
     if (!task || !result || result.correct) return
     clearTimeout(timer)
-    void audio.playSequence([task.reference, withOctave(result.given, targetOctave), task.target], timing)
+    if (task.kind === 'notes') {
+      const mine = withOctave(result.given, targetOctave)
+      const seq = task.reference ? [task.reference, mine, task.target] : [mine, task.target]
+      void audio.playSequence(seq, timing)
+      return
+    }
+    // Intervall: erst dein Intervall, dann das richtige, jeweils vom selben Startton
+    const startMidi = Note.midi(task.start) as number
+    const sign = task.direction === 'down' ? -1 : 1
+    const mine = Note.fromMidiSharps(startMidi + sign * Number(result.given))
+    if (task.mode === 'harmonic') {
+      if (await audio.playChord([task.start, mine], { duration: 1.3 })) await audio.playChord([task.start, task.second], { duration: 1.3 })
+    } else {
+      void audio.playSequence([task.start, mine, task.start, task.second], timing)
+    }
   }
 
   function next() {
@@ -188,7 +232,12 @@
   }
 </script>
 
-<main class="ex" data-phase={phase} data-task={task?.target}>
+<main class="ex" data-phase={phase}
+  data-task={task?.kind === 'notes' ? task.target : task ? String(task.semitones) : undefined}
+  data-second={task?.kind === 'intervals' ? task.second : undefined}
+  data-start={task?.kind === 'intervals' ? task.start : undefined}
+  data-mode={task?.kind === 'intervals' ? task.mode : undefined}
+>
   <header>
     <button class="close" aria-label="Runde beenden" onclick={onexit}>✕</button>
     <div class="count">
@@ -206,11 +255,11 @@
         {:else if phase === 'listening'}
           Hör zu …
         {:else if phase === 'answering'}
-          Welcher Ton war das?
+          {task?.kind === 'intervals' ? 'Welches Intervall war das?' : 'Welcher Ton war das?'}
         {:else if result?.correct}
-          <span class="good">Richtig: {displayName(result.expected)}</span>
+          <span class="good">Richtig: {answerName(result.expected)}</span>
         {:else if result}
-          <span class="bad">Falsch.</span> Das war <b>{displayName(result.expected)}</b>, du hast {displayName(result.given)} gewählt.
+          <span class="bad">Falsch.</span> Das war <b>{answerName(result.expected)}</b>, du hast {answerName(result.given)} gewählt.
         {/if}
       </span>
     </p>
@@ -221,9 +270,9 @@
 
     <div class="actions">
       <button onclick={replay} disabled={phase === 'neutralizing'}>▶ Nochmal</button>
-      <button onclick={playReference} disabled={phase === 'neutralizing'}
-        >Referenz {task ? task.reference.slice(0, -1) : 'C'}</button
-      >
+      {#if refButton}
+        <button onclick={playReference} disabled={phase === 'neutralizing'}>{refButton.label}</button>
+      {/if}
       {#if wrong}
         <button onclick={compare}>Vergleich</button>
       {/if}
@@ -240,9 +289,15 @@
     >
   </section>
 
-  <div class="keys">
-    <Keyboard enabled={level.notes} {marks} locked={phase !== 'answering'} onpress={answer} />
-  </div>
+  {#if practice.type === 'notes'}
+    <div class="keys">
+      <Keyboard enabled={practice.notes} {marks} locked={phase !== 'answering'} onpress={answer} />
+    </div>
+  {:else}
+    <div class="answers">
+      <IntervalButtons enabled={practice.intervals} {marks} locked={phase !== 'answering'} onpress={answer} />
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -361,6 +416,9 @@
   }
   .keys {
     height: clamp(210px, 34dvh, 300px);
+  }
+  .answers {
+    padding-bottom: 4px;
   }
   .lage {
     margin: 0;

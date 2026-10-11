@@ -21,6 +21,12 @@
     '1c': 'Alle sieben Stammtöne von C bis B.',
     '1d': 'Der Zielton kann eine Oktave tiefer oder höher liegen.',
     '1e': 'Auch die schwarzen Tasten: Töne mit # und b.',
+    '2a': 'Prime, Quinte und Oktave, immer ab Startton C.',
+    '2b': 'Dazu Quarte und grosse Terz.',
+    '2c': 'Dazu grosse Sekunde und kleine Terz: sieben Intervalle.',
+    '2d': 'Alle 13 Intervalle aufwärts, der Startton wechselt.',
+    '2e': 'Alle Intervalle abwärts, der Startton wechselt.',
+    '2f': 'Alle Intervalle gleichzeitig gespielt (harmonisch).',
   }
 
   /** Gewählte Stufe (zuletzt benutzte, gespeichert). Nichts ist gesperrt. */
@@ -82,7 +88,10 @@
 
   <h2>Stufe</h2>
   <div class="levels" role="radiogroup" aria-label="Stufe">
-    {#each LEVELS as l (l.id)}
+    {#each LEVELS as l, i (l.id)}
+      {#if i === 0 || LEVELS[i - 1].kind !== l.kind}
+        <h3 class="group">{l.kind === 'notes' ? 'Grundtöne' : 'Intervalle'}</h3>
+      {/if}
       {@const mark = levelMark(progress, l.id)}
       {@const st = info(l.id)}
       <button
@@ -238,6 +247,13 @@
   .level.selected {
     border-color: var(--accent);
     background: #1d2742;
+  }
+  .group {
+    margin: 8px 0 0;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   .badge {
     margin-left: 8px;

@@ -33,10 +33,13 @@ export interface ItemStat {
   misses: number
 }
 
+/** Stufe des Lernpfads oder Freies Training (Grundtöne bzw. Intervalle) */
+export type RoundLevel = LevelId | 'free-notes' | 'free-intervals'
+
 export interface RoundRecord {
   /** ISO-Zeitpunkt des Rundenendes */
   at: string
-  level: LevelId
+  level: RoundLevel
   total: number
   correct: number
 }
@@ -95,6 +98,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const isLevel = (v: unknown): v is LevelId => LEVELS.some((l) => l.id === v)
+const isRoundLevel = (v: unknown): v is RoundLevel => isLevel(v) || v === 'free-notes' || v === 'free-intervals'
 
 function num(v: unknown, fallback: number, min: number, max: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
@@ -136,10 +140,10 @@ function cleanProgress(raw: unknown): Progress {
   if (Array.isArray(raw.rounds)) {
     out.rounds = raw.rounds
       .filter(isObject)
-      .filter((r) => typeof r.at === 'string' && isLevel(r.level))
+      .filter((r) => typeof r.at === 'string' && isRoundLevel(r.level))
       .map((r) => ({
         at: r.at as string,
-        level: r.level as LevelId,
+        level: r.level as RoundLevel,
         total: count(r.total),
         correct: Math.min(count(r.correct), count(r.total)),
       }))

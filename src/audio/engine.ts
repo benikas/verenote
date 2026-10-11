@@ -349,6 +349,29 @@ export class AudioEngine {
     return myRun === this.runId
   }
 
+  /**
+   * Töne gleichzeitig spielen (harmonisches Intervall). Das Promise ist fertig, wenn die Töne
+   * ausgeklungen sind, oder früher bei stop() bzw. einer neuen Wiedergabe.
+   * Ergebnis: true = vollständig gespielt.
+   */
+  async playChord(
+    notes: string[],
+    opts: { duration?: number; velocity?: number; instrument?: Instrument } = {},
+  ): Promise<boolean> {
+    const { duration = 1.6, velocity = 0.9, instrument } = opts
+    const myRun = ++this.runId
+    this.releaseAll()
+    if (!this.running && !(await this.resume())) {
+      this.markInterrupted()
+      this.checkStatus()
+      return false
+    }
+    if (myRun !== this.runId) return false
+    for (const n of notes) this.play(n, duration, velocity, instrument)
+    await sleep(duration * 1000)
+    return myRun === this.runId
+  }
+
   /** Laufende Wiedergabe abbrechen und Töne ausklingen lassen. */
   stop(): void {
     this.runId += 1

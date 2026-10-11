@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { SessionSummary } from '../exercise/session'
-  import { displayName } from '../theory/notes'
   import { getLevel, type LevelId } from '../theory/tasks'
 
   let {
@@ -22,14 +21,21 @@
   } = $props()
 
   /** Die gerade geübte Stufe ist mit dieser Runde geschafft: „Weiter mit …“ anbieten */
-  const justDone = $derived(achieved.includes(summary.level) && nextLevel !== null)
+  const justDone = $derived(summary.level !== null && achieved.includes(summary.level) && nextLevel !== null)
 
   const percent = $derived(Math.round(summary.accuracy * 100))
-  const weak = $derived(summary.perNote.filter((n) => n.attempts > n.correct))
+  const isNotes = $derived(summary.practice.type === 'notes')
+  /** Grundtöne: alle Töne der Stufe (auch „nicht gefragt“). Intervalle: nur die gefragten */
+  const rows = $derived(isNotes ? summary.perItem : summary.perItem.filter((r) => r.attempts > 0))
+  const weak = $derived(summary.perItem.filter((r) => r.attempts > r.correct))
+  const title = $derived(
+    summary.level ? `Stufe ${summary.level} · ${getLevel(summary.level).label}` : 'Freies Training',
+  )
 </script>
 
 <main class="sum">
   <h1>Ergebnis</h1>
+  <p class="where">{title}</p>
 
   <div class="big" class:good={percent >= 80}>
     <span class="pct">{percent} %</span>
@@ -44,11 +50,11 @@
     <p class="note">Eine Stufe gilt als geschafft bei ca. 80 % über die letzten 20 Versuche.</p>
   {/if}
 
-  <h2>Pro Ton</h2>
-  <ul class="notes">
-    {#each summary.perNote as n (n.note)}
+  <h2>{isNotes ? 'Pro Ton' : 'Pro Intervall'}</h2>
+  <ul class="notes" class:wide={!isNotes}>
+    {#each rows as n (n.key)}
       <li class:miss={n.attempts > n.correct}>
-        <span class="name">{displayName(n.note)}</span>
+        <span class="name">{n.label}</span>
         <span class="ratio">
           {#if n.attempts === 0}nicht gefragt{:else}{n.correct} / {n.attempts}{/if}
         </span>
@@ -57,7 +63,7 @@
   </ul>
 
   {#if weak.length > 0}
-    <p class="hint">Zum Üben: {weak.map((n) => displayName(n.note)).join(', ')}</p>
+    <p class="hint">Zum Üben: {weak.map((n) => n.label).join(', ')}</p>
   {/if}
 
   <div class="buttons">
@@ -92,6 +98,13 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--muted);
+  }
+  .where {
+    margin: -6px 0 0;
+    color: var(--muted);
+  }
+  .notes.wide {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
   .big {
     background: var(--surface);

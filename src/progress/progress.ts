@@ -1,4 +1,4 @@
-import { MAX_ROUNDS, RECENT_ATTEMPTS, type Progress } from '../storage/schema'
+import { MAX_ROUNDS, RECENT_ATTEMPTS, type Progress, type RoundLevel } from '../storage/schema'
 import type { LevelId } from '../theory/tasks'
 
 /**
@@ -6,8 +6,11 @@ import type { LevelId } from '../theory/tasks'
  * Progress-Objekt; gespeichert wird es von der App.
  */
 
-/** Einen Versuch festhalten: Treffer/Fehler pro Item und die letzten Versuche der Stufe. */
-export function recordAttempt(progress: Progress, level: LevelId, itemKey: string, correct: boolean): void {
+/**
+ * Einen Versuch festhalten: Treffer/Fehler pro Item und, im Lernpfad, die letzten Versuche der Stufe.
+ * Im Freien Training (level = null) zählt der Versuch für Statistik und Fehlerstand, nicht für die Stufen.
+ */
+export function recordAttempt(progress: Progress, level: LevelId | null, itemKey: string, correct: boolean): void {
   // Immer über `progress` zurücklesen: Bei einem Svelte-$state-Objekt liefert `??=` sonst das
   // rohe Objekt, und Änderungen daran bleiben unsichtbar.
   if (!progress.items[itemKey]) progress.items[itemKey] = { hits: 0, misses: 0 }
@@ -15,6 +18,7 @@ export function recordAttempt(progress: Progress, level: LevelId, itemKey: strin
   if (correct) stat.hits += 1
   else stat.misses += 1
 
+  if (level === null) return
   if (!progress.recent[level]) progress.recent[level] = []
   const recent = progress.recent[level]
   recent.push(correct)
@@ -22,7 +26,7 @@ export function recordAttempt(progress: Progress, level: LevelId, itemKey: strin
 }
 
 /** Eine abgeschlossene Runde in den Verlauf aufnehmen (die letzten MAX_ROUNDS bleiben). */
-export function recordRound(progress: Progress, level: LevelId, total: number, correct: number, at = new Date()): void {
+export function recordRound(progress: Progress, level: RoundLevel, total: number, correct: number, at = new Date()): void {
   progress.rounds.push({ at: at.toISOString(), level, total, correct })
   if (progress.rounds.length > MAX_ROUNDS) progress.rounds.splice(0, progress.rounds.length - MAX_ROUNDS)
 }

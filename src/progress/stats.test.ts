@@ -10,7 +10,9 @@ describe('Statistik', () => {
     expect(s.tones.every((t) => t.attempts === 0 && t.accuracy === null)).toBe(true)
     expect(s.rounds).toEqual([])
     expect(s.totalAttempts).toBe(0)
-    expect(s.levels.map((l) => [l.id, l.mark])).toEqual([['1a', 'neu'], ['1b', 'neu'], ['1c', 'neu'], ['1d', 'neu'], ['1e', 'neu']])
+    expect(s.levels.map((l) => [l.id, l.mark])).toEqual(
+      ['1a', '1b', '1c', '1d', '1e', '2a', '2b', '2c', '2d', '2e', '2f'].map((id) => [id, 'neu']),
+    )
   })
 
   it('Zahlen stimmen mit den gespeicherten Daten überein', () => {

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import type { LevelId } from '../theory/tasks'
 import { emptyProgress, type Progress } from '../storage/schema'
 import { recentStat, recordAttempt, recordRound } from './progress'
 import { MARK_LABEL, isDone, levelMark, meetsDoneRule, recommendedLevel, updateDone } from './marks'
 
-function attempts(p: Progress, level: '1a' | '1b' | '1c' | '1d' | '1e', hits: number, misses: number) {
+function attempts(p: Progress, level: LevelId, hits: number, misses: number) {
   for (let i = 0; i < hits; i++) recordAttempt(p, level, 'E|C', true)
   for (let i = 0; i < misses; i++) recordAttempt(p, level, 'E|C', false)
 }
@@ -113,7 +114,7 @@ describe('Markierung neu · begonnen · geschafft', () => {
     attempts(p, '1a', 20, 0)
     updateDone(p, 0.8)
     expect(recommendedLevel(p)).toBe('1b')
-    for (const l of ['1b', '1c', '1d', '1e'] as const) {
+    for (const l of ['1b', '1c', '1d', '1e', '2a', '2b', '2c', '2d', '2e', '2f'] as const) {
       attempts(p, l, 20, 0)
     }
     updateDone(p, 0.8)

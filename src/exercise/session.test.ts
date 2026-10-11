@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { pickWeighted, seededRng } from '../shared/rng'
+import type { Task } from '../theory/tasks'
 import { Session } from './session'
+
+/** Nächste Aufgabe einer Grundton-Session (mit Typprüfung) */
+function nextNote(s: Session): Task {
+  const t = s.next()
+  if (t.kind !== 'notes') throw new Error('Grundton-Aufgabe erwartet')
+  return t
+}
 
 const make = (level: '1a' | '1b' | '1c' = '1c', length = 10, seed = 1) =>
   new Session({ level, length, rng: seededRng(seed) })
@@ -35,7 +43,7 @@ describe('Session: Ablauf', () => {
   it('erzeugt Aufgaben mit Referenz C4 und Zielton aus der Stufe', () => {
     const s = make('1a')
     for (let i = 0; i < 10; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       expect(t.reference).toBe('C4')
       expect(['C4', 'E4', 'G4']).toContain(t.target)
       expect(t.id).toBe(i + 1)
@@ -47,18 +55,18 @@ describe('Session: Ablauf', () => {
     const s = make('1b', 3)
     expect(s.done).toBe(false)
     for (let i = 0; i < 3; i++) {
-      s.next()
+      nextNote(s)
       s.answer('C')
     }
     expect(s.done).toBe(true)
     expect(s.answered).toBe(3)
-    expect(() => s.next()).toThrow()
+    expect(() => nextNote(s)).toThrow()
   })
 
   it('verlangt die Antwort, bevor die nächste Aufgabe kommt', () => {
     const s = make()
-    s.next()
-    expect(() => s.next()).toThrow()
+    nextNote(s)
+    expect(() => nextNote(s)).toThrow()
     expect(() => make().answer('C')).toThrow()
   })
 
@@ -70,7 +78,7 @@ describe('Session: Ablauf', () => {
   it('current zeigt die offene Aufgabe', () => {
     const s = make()
     expect(s.current).toBeNull()
-    const t = s.next()
+    const t = nextNote(s)
     expect(s.current).toBe(t)
     s.answer('C')
     expect(s.current).toBeNull()
@@ -80,11 +88,11 @@ describe('Session: Ablauf', () => {
 describe('Session: Bewertung', () => {
   it('richtige und falsche Antworten, mit und ohne Oktave', () => {
     const s = make('1a', 3)
-    const t1 = s.next()
+    const t1 = nextNote(s)
     const ok = s.answer(t1.target)
     expect(ok).toMatchObject({ correct: true, given: t1.target.slice(0, -1) })
 
-    const t2 = s.next()
+    const t2 = nextNote(s)
     const wrong = ['C', 'E', 'G'].find((n) => n !== t2.target.slice(0, -1))!
     const bad = s.answer(wrong)
     expect(bad.correct).toBe(false)
@@ -97,7 +105,7 @@ describe('Session: Bewertung', () => {
     const s = new Session({ level: '1a', length: 20, rng: seededRng(3) })
     let found = false
     for (let i = 0; i < 20 && !found; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       if (t.target === 'E4') {
         expect(s.answer('Fb').correct).toBe(true)
         found = true
@@ -108,7 +116,7 @@ describe('Session: Bewertung', () => {
 
   it('ungültige Antwort wirft', () => {
     const s = make()
-    s.next()
+    nextNote(s)
     expect(() => s.answer('X')).toThrow()
   })
 })
@@ -118,7 +126,7 @@ describe('Session: Wiederholung von Fehlern', () => {
     const s = make('1b', 200, 5)
     let last = ''
     for (let i = 0; i < 200; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       expect(t.target).not.toBe(last)
       last = t.target
       s.answer(t.target)
@@ -130,7 +138,7 @@ describe('Session: Wiederholung von Fehlern', () => {
     const s = make('1c', 1400, 11)
     const counts: Record<string, number> = {}
     for (let i = 0; i < 1400; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       const pc = t.target.slice(0, -1)
       counts[pc] = (counts[pc] ?? 0) + 1
       s.answer(pc === 'G' ? 'A' : pc)
@@ -147,7 +155,7 @@ describe('Session: Wiederholung von Fehlern', () => {
     const s = make('1c', 1500, 21)
     const late: Record<string, number> = {}
     for (let i = 0; i < 1500; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       const pc = t.target.slice(0, -1)
       const wrongPhase = i < 60 && pc === 'G'
       if (i >= 500) late[pc] = (late[pc] ?? 0) + 1
@@ -166,7 +174,7 @@ describe('Session: Zusammenfassung', () => {
   it('berechnet Trefferquote und Aufschlüsselung pro Ton', () => {
     const s = make('1a', 12, 9)
     for (let i = 0; i < 12; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       const pc = t.target.slice(0, -1)
       // C immer richtig, E immer falsch, G immer richtig
       s.answer(pc === 'E' ? 'G' : pc)
@@ -198,7 +206,7 @@ describe('Stufen 1d und 1e in der Session', () => {
     const s = new Session({ level: '1d', length: 60, rng: seededRng(7) })
     const octaves = new Set<string>()
     for (let i = 0; i < 60; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       octaves.add(t.target.slice(-1))
       expect(['C', 'D', 'E', 'F', 'G', 'A', 'B']).toContain(t.target.slice(0, -1))
       s.answer(t.target)
@@ -210,7 +218,7 @@ describe('Stufen 1d und 1e in der Session', () => {
     const s = new Session({ level: '1e', length: 80, rng: seededRng(3) })
     const notes = new Set<string>()
     for (let i = 0; i < 80; i++) {
-      const t = s.next()
+      const t = nextNote(s)
       notes.add(t.target.slice(0, -1))
       expect(s.answer(t.target.slice(0, -1)).correct).toBe(true)
     }
