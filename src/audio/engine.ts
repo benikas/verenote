@@ -1,4 +1,5 @@
 import * as Tone from 'tone'
+import { sampleFileName, sampleNames } from './samples'
 
 /**
  * Audio-Engine (M0, Aufgaben 0.2 + 0.3).
@@ -25,11 +26,10 @@ export interface SequenceOptions {
   velocity?: number
   /** Wird direkt nach dem Anschlag jedes Tons aufgerufen (index ab 0) */
   onNote?: (index: number, note: string) => void
+  /** Klavier oder Synth erzwingen (Prüfmodus) */
+  instrument?: Instrument
 }
 
-// Sample-Stützstellen (Kleinterzen), siehe scripts/copy-samples.mjs
-const SAMPLE_NOTES = ['A', 'C', 'D#', 'F#']
-const SAMPLE_OCTAVES = [2, 3, 4, 5, 6]
 const LOAD_TIMEOUT_MS = 30_000
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -41,6 +41,12 @@ export class AudioEngine {
   private runId = 0
   private loadStarted = false
   private listeners = new Set<(s: LoadState) => void>()
+  private statusListeners = new Set<(needsTap: boolean) => void>()
+  private interruptListeners = new Set<() => void>()
+  private resumeListeners = new Set<() => void>()
+  /** Wiedergabe wurde unterbrochen (App im Hintergrund); wartet auf Rückkehr von Audio */
+  private interrupted = false
+  private lifecycleBound = false
 
   loadState: LoadState = { phase: 'idle', progress: 0 }
 
@@ -78,6 +84,103 @@ export class AudioEngine {
     }).toDestination()
     this.synth.volume.value = -8
     this.unlocked = true
+    this.bindLifecycle()
+  }
+
+  // ---- Audio nach App-Wechsel wieder aufnehmen (B2) -------------------------------
+  // iOS setzt den AudioContext auf "suspended"/"interrupted", sobald die Seite im
+  // Hintergrund ist oder der Bildschirm gesperrt wird. Er läuft nur nach einer
+  // Berührung wieder an. Deshalb: bei jeder Berührung resume(), vor jedem Abspielen
+  // prüfen, und der UI melden, wenn "Tippen zum Fortsetzen" nötig ist.
+
+  private get rawCtx(): AudioContext {
+    return Tone.getContext().rawContext as AudioContext
+  }
+
+  /** Läuft der AudioContext gerade? */
+  get running(): boolean {
+    return this.unlocked && this.rawCtx.state === 'running'
+  }
+
+  /** Audio ist entsperrt, läuft aber nicht (mehr): ein Tippen ist nötig */
+  get needsTap(): boolean {
+    return this.unlocked && !this.running
+  }
+
+  onStatus(fn: (needsTap: boolean) => void): () => void {
+    this.statusListeners.add(fn)
+    return () => this.statusListeners.delete(fn)
+  }
+
+  /** Wird gerufen, wenn die laufende Wiedergabe wegen App-Wechsel abgebrochen wurde */
+  onInterrupted(fn: () => void): () => void {
+    this.interruptListeners.add(fn)
+    return () => this.interruptListeners.delete(fn)
+  }
+
+  /** Wird gerufen, wenn Audio nach einer Unterbrechung wieder läuft */
+  onResumed(fn: () => void): () => void {
+    this.resumeListeners.add(fn)
+    return () => this.resumeListeners.delete(fn)
+  }
+
+  /**
+   * Versucht, den AudioContext wieder zu starten. Ohne Berührung verweigert iOS das
+   * unter Umständen, dann bleibt needsTap wahr. Hängt nie länger als ~1,5 s.
+   */
+  async resume(): Promise<boolean> {
+    if (!this.unlocked) return false
+    if (this.rawCtx.state !== 'running') {
+      try {
+        await Promise.race([this.rawCtx.resume(), sleep(1500)])
+      } catch {
+        /* bleibt gesperrt, needsTap meldet es */
+      }
+    }
+    this.checkStatus()
+    return this.running
+  }
+
+  private checkStatus(): void {
+    const needsTap = this.needsTap
+    this.statusListeners.forEach((fn) => fn(needsTap))
+    if (this.running && this.interrupted && !document.hidden) {
+      this.interrupted = false
+      this.resumeListeners.forEach((fn) => fn())
+    }
+  }
+
+  /** Laufende Töne und Sequenzen sauber abbrechen; die UI spielt nach der Rückkehr neu */
+  private markInterrupted(): void {
+    if (this.interrupted) return
+    this.stop()
+    this.interrupted = true
+    this.interruptListeners.forEach((fn) => fn())
+  }
+
+  private bindLifecycle(): void {
+    if (this.lifecycleBound) return
+    this.lifecycleBound = true
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.markInterrupted()
+        this.checkStatus()
+      }
+      else void this.resume()
+    })
+    // Zurück aus dem Seiten-Cache (Safari): Zustand neu prüfen
+    window.addEventListener('pageshow', () => void this.resume())
+    // Das Gerät hat Audio weggenommen (Anruf, Sperrbildschirm) oder gibt es zurück
+    this.rawCtx.addEventListener('statechange', () => {
+      if (this.rawCtx.state !== 'running') this.markInterrupted()
+      this.checkStatus()
+    })
+    // iOS erlaubt resume() nur in einer Berührung (touchend/click, nicht pointerdown)
+    const onGesture = () => {
+      if (this.needsTap) void this.resume()
+    }
+    window.addEventListener('touchend', onGesture, { capture: true, passive: true })
+    window.addEventListener('click', onGesture, { capture: true, passive: true })
   }
 
   /**
@@ -89,8 +192,7 @@ export class AudioEngine {
     this.loadStarted = true
 
     const t0 = performance.now()
-    const names = SAMPLE_OCTAVES.flatMap((o) => SAMPLE_NOTES.map((n) => `${n}${o}`))
-    names.push('C7')
+    const names = sampleNames()
     let done = 0
     this.setLoadState({ phase: 'loading', progress: 0 })
 
@@ -98,7 +200,7 @@ export class AudioEngine {
     const loads = names.map(
       (name) =>
         new Promise<void>((resolve, reject) => {
-          const url = `${baseUrl}${name.replace('#', 's')}.mp3` // D#2 -> Ds2.mp3
+          const url = `${baseUrl}${sampleFileName(name)}` // D#2 -> Ds2.mp3
           buffers[name] = new Tone.ToneAudioBuffer(
             url,
             () => {
@@ -133,29 +235,45 @@ export class AudioEngine {
       })
   }
 
-  /** Einzelnen Ton sofort spielen. note z. B. "C4", "F#3". duration in Sekunden, velocity 0–1. */
-  play(note: string, duration = 1.2, velocity = 1): void {
+  /** Sind die Klavier-Samples geladen? */
+  get hasPiano(): boolean {
+    return this.sampler !== null
+  }
+
+  /**
+   * Einzelnen Ton sofort spielen. note z. B. "C4", "F#3". duration in Sekunden, velocity 0–1.
+   * instrument erzwingt Klavier oder Synth (Prüfmodus); Standard: Klavier, sobald geladen.
+   */
+  play(note: string, duration = 1.2, velocity = 1, instrument?: Instrument): void {
     if (!this.unlocked) return
+    if (!this.running) void this.resume() // z. B. nach App-Wechsel, aus dem Tippen heraus
     const t = Tone.immediate()
-    if (this.sampler) this.sampler.triggerAttackRelease(note, duration, t, velocity)
+    const usePiano = this.sampler !== null && instrument !== 'synth'
+    if (usePiano) this.sampler?.triggerAttackRelease(note, duration, t, velocity)
     else this.synth?.triggerAttackRelease(note, duration, t, velocity)
   }
 
   /**
    * Töne nacheinander spielen. Das Promise ist erst fertig, wenn der letzte Ton
    * angeschlagen und sein Abstand abgelaufen ist, oder früher, wenn stop() oder
-   * eine neue Sequenz die Wiedergabe abbricht.
+   * eine neue Sequenz die Wiedergabe abbricht. Ergebnis: true = vollständig gespielt.
    */
-  async playSequence(notes: string[], opts: SequenceOptions = {}): Promise<void> {
-    const { noteDuration = 1.2, interval = 1.4, velocity = 1, onNote } = opts
+  async playSequence(notes: string[], opts: SequenceOptions = {}): Promise<boolean> {
+    const { noteDuration = 1.2, interval = 1.4, velocity = 1, onNote, instrument } = opts
     const myRun = ++this.runId
     this.releaseAll()
+    if (!this.running && !(await this.resume())) {
+      this.markInterrupted() // Audio ist weg: UI zeigt "Tippen zum Fortsetzen"
+      this.checkStatus()
+      return false
+    }
     for (let i = 0; i < notes.length; i++) {
-      if (myRun !== this.runId) return
-      this.play(notes[i], noteDuration, velocity)
+      if (myRun !== this.runId) return false
+      this.play(notes[i], noteDuration, velocity, instrument)
       onNote?.(i, notes[i])
       await sleep(interval * 1000)
     }
+    return myRun === this.runId
   }
 
   /** Laufende Wiedergabe abbrechen und Töne ausklingen lassen. */

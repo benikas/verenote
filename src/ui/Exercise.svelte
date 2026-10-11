@@ -43,7 +43,38 @@
 
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-  onMount(begin)
+  /**
+   * App-Wechsel/Bildschirmsperre (B2): Die Wiedergabe bricht ab. Was danach nachzuholen ist,
+   * merkt sich `pending`. Sobald Audio wieder läuft, geht es dort weiter.
+   */
+  type Pending = 'prelude' | 'task' | 'solution' | 'next' | null
+  let pending: Pending = null
+
+  function handleInterrupt() {
+    introToken += 1 // laufende begin()-Kette beenden
+    clearTimeout(timer)
+    if (phase === 'neutralizing') pending = 'prelude'
+    else if (phase === 'listening' || phase === 'answering') pending = 'task'
+    else if (result?.correct) pending = manualNext ? null : 'next'
+    else pending = 'solution'
+  }
+
+  function handleResume() {
+    const p = pending
+    pending = null
+    if (p === 'prelude') void prelude(++introToken)
+    else if (p === 'task') {
+      phase = 'listening'
+      void playTask()
+    } else if (p === 'solution') void playTask()
+    else if (p === 'next') next()
+  }
+
+  onMount(() => {
+    const offs = [audio.onInterrupted(handleInterrupt), audio.onResumed(handleResume)]
+    void begin()
+    return () => offs.forEach((off) => off())
+  })
   onDestroy(() => {
     introToken += 1
     clearTimeout(timer)
@@ -57,17 +88,23 @@
     result = null
     marks = {}
     manualNext = false
+    await prelude(token)
+  }
 
+  /** Neutralisierung (falls an), dann Aufgabe. Wird bei Unterbrechung von vorn gespielt. */
+  async function prelude(token: number) {
+    if (!task) return
     // Gehör neutralisieren: ab der zweiten Aufgabe, leiser, danach kurze Pause
     if (shouldNeutralize(settings, session.answered)) {
       phase = 'neutralizing'
       const notes = makeNeutralization(settings.neutralLength, Math.random, task.reference)
-      await audio.playSequence(notes, {
+      const ok = await audio.playSequence(notes, {
         noteDuration: NEUTRAL_PLAYBACK.noteDuration,
         interval: NEUTRAL_PLAYBACK.interval,
         velocity: NEUTRAL_PLAYBACK.velocity,
       })
       if (token !== introToken) return
+      if (!ok) return handleInterrupt() // Audio weg, ohne dass die Engine es gemeldet hat
       await sleep(NEUTRAL_PLAYBACK.pauseMs)
       if (token !== introToken) return
     }
@@ -79,12 +116,15 @@
   /** Referenzton, dann Zielton. Nach dem Zielton darf geantwortet werden. */
   async function playTask() {
     if (!task) return
-    await audio.playSequence([task.reference, task.target], {
+    const myIntro = introToken
+    const ok = await audio.playSequence([task.reference, task.target], {
       ...timing,
       onNote: (i) => {
         if (i === 1 && phase === 'listening') phase = 'answering'
       },
     })
+    // Audio war weg, ohne dass die Engine es gemeldet hat (Unterbrechung schon vermerkt)
+    if (!ok && myIntro === introToken && audio.needsTap) handleInterrupt()
   }
 
   /** Wer nach einer richtigen Antwort noch einmal hört, bestimmt selbst, wann es weitergeht. */

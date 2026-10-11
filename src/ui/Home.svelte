@@ -123,7 +123,7 @@
   </div>
 
   <button class="go" onclick={() => onstart(level, length)}>Runde starten</button>
-  <button class="link" onclick={ontest}>Audio-Test</button>
+  <button class="link" onclick={ontest}>Ton-Prüfung (alle Töne anhören)</button>
 </main>
 
 <style>

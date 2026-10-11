@@ -15,13 +15,19 @@
   let load = $state<LoadState>(audio.loadState)
   let session = $state.raw<Session | null>(null)
   let summary = $state.raw<SessionSummary | null>(null)
+  /** Audio läuft nicht (mehr), z. B. nach App-Wechsel: ein Tippen setzt es fort (B2) */
+  let needsTap = $state(false)
   let config = { level: '1a' as LevelId, length: 15 }
 
   onMount(() => {
-    const off = audio.onLoadState((s) => (load = s))
+    const offLoad = audio.onLoadState((s) => (load = s))
+    const offStatus = audio.onStatus((n) => (needsTap = n))
     // Laden schon vor dem ersten Tap beginnen: Der Synth springt bis dahin ein
     void audio.loadSamples()
-    return off
+    return () => {
+      offLoad()
+      offStatus()
+    }
   })
 
   async function start() {
@@ -59,3 +65,42 @@
 {:else if screen === 'test'}
   <AudioTest {load} onback={() => (screen = 'home')} />
 {/if}
+
+{#if needsTap && screen === 'exercise'}
+  <button class="resume" onclick={() => void audio.resume()}>
+    <span class="big">Tippen zum Fortsetzen</span>
+    <span class="small">Der Ton wurde beim App-Wechsel angehalten.</span>
+  </button>
+{/if}
+
+<style>
+  .resume {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 0;
+    border-radius: 0;
+    background: rgba(8, 12, 22, 0.88);
+    color: var(--text);
+    /* erscheint leicht verzögert, damit ein sofortiges automatisches Fortsetzen nicht aufblitzt */
+    opacity: 0;
+    animation: fade-in 0.2s 0.35s forwards;
+  }
+  .big {
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+  .small {
+    color: var(--muted);
+  }
+  @keyframes fade-in {
+    to {
+      opacity: 1;
+    }
+  }
+</style>
