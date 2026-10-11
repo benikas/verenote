@@ -3,10 +3,11 @@
   import { audio, type LoadState } from './audio/engine'
   import { Session, type SessionSummary } from './exercise/session'
   import { recordRound } from './progress/progress'
-  import { currentLevel, updateUnlocks } from './progress/unlock'
-  import type { LevelId } from './theory/tasks'
+  import { updateDone } from './progress/marks'
+  import { noteRound } from './storage/backup'
+  import { nextLevel, type LevelId } from './theory/tasks'
   import AudioTest from './ui/AudioTest.svelte'
-  import { initData, persistNow, persistSoon, progress, settings } from './ui/data.svelte'
+  import { backup, initData, persistNow, persistSoon, progress, settings } from './ui/data.svelte'
   import Exercise from './ui/Exercise.svelte'
   import Home from './ui/Home.svelte'
   import StartScreen from './ui/StartScreen.svelte'
@@ -22,8 +23,8 @@
   /** Audio läuft nicht (mehr), z. B. nach App-Wechsel: ein Tippen setzt es fort (B2) */
   let needsTap = $state(false)
   let config = { level: '1a' as LevelId, length: 15 }
-  /** Stufen, die mit der letzten Runde freigeschaltet wurden */
-  let unlocked = $state.raw<LevelId[]>([])
+  /** Stufen, die mit der letzten Runde „geschafft“ wurden */
+  let achieved = $state.raw<LevelId[]>([])
   const dataReady = initData()
 
   onMount(() => {
@@ -58,7 +59,7 @@
     settings.length = length
     session = new Session(config)
     summary = null
-    unlocked = []
+    achieved = []
     screen = 'exercise'
   }
 
@@ -66,7 +67,8 @@
     summary = session?.summary() ?? null
     if (summary) {
       recordRound(progress, summary.level, summary.total, summary.correct)
-      unlocked = updateUnlocks(progress, settings.unlockThreshold)
+      noteRound(backup)
+      achieved = updateDone(progress, settings.doneThreshold)
       void persistNow()
     }
     screen = 'summary'
@@ -87,8 +89,10 @@
 {:else if screen === 'summary' && summary}
   <Summary
     {summary}
-    {unlocked}
-    onagain={() => startRound(currentLevel(progress), config.length)}
+    {achieved}
+    nextLevel={nextLevel(summary.level)}
+    onagain={() => startRound(config.level, config.length)}
+    onnext={(id) => startRound(id, config.length)}
     onhome={() => (screen = 'home')}
   />
 {:else if screen === 'stats'}

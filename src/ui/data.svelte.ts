@@ -1,4 +1,13 @@
-import { DEFAULT_PERSISTED_SETTINGS, DATA_VERSION, emptyProgress, type AppData, type PersistedSettings, type Progress } from '../storage/schema'
+import {
+  DATA_VERSION,
+  DEFAULT_PERSISTED_SETTINGS,
+  emptyBackup,
+  emptyProgress,
+  type AppData,
+  type Backup,
+  type PersistedSettings,
+  type Progress,
+} from '../storage/schema'
 import { idbStore, loadData, saveData, type Loaded, type KeyValueStore } from '../storage/store'
 
 /**
@@ -7,6 +16,7 @@ import { idbStore, loadData, saveData, type Loaded, type KeyValueStore } from '.
  */
 export const settings: PersistedSettings = $state({ ...DEFAULT_PERSISTED_SETTINGS })
 export const progress: Progress = $state(emptyProgress())
+export const backup: Backup = $state(emptyBackup())
 
 export const storageState = $state({
   ready: false,
@@ -25,11 +35,12 @@ export function applyData(data: AppData): void {
   progress.items = p.items
   progress.recent = p.recent
   progress.rounds = p.rounds
-  progress.unlocked = p.unlocked
+  progress.done = p.done
+  Object.assign(backup, data.backup)
 }
 
 export function snapshot(): AppData {
-  return $state.snapshot({ version: DATA_VERSION, settings, progress }) as AppData
+  return $state.snapshot({ version: DATA_VERSION, settings, progress, backup }) as AppData
 }
 
 export async function initData(useStore: KeyValueStore = idbStore): Promise<void> {

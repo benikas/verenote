@@ -5,16 +5,24 @@
 
   let {
     summary,
-    unlocked = [],
+    achieved = [],
+    nextLevel = null,
     onagain,
+    onnext,
     onhome,
   }: {
     summary: SessionSummary
-    /** Mit dieser Runde freigeschaltete Stufen */
-    unlocked?: LevelId[]
+    /** Mit dieser Runde „geschaffte“ Stufen */
+    achieved?: LevelId[]
+    /** Stufe nach der geübten (null bei der letzten) */
+    nextLevel?: LevelId | null
     onagain: () => void
+    onnext: (level: LevelId) => void
     onhome: () => void
   } = $props()
+
+  /** Die gerade geübte Stufe ist mit dieser Runde geschafft: „Weiter mit …“ anbieten */
+  const justDone = $derived(achieved.includes(summary.level) && nextLevel !== null)
 
   const percent = $derived(Math.round(summary.accuracy * 100))
   const weak = $derived(summary.perNote.filter((n) => n.attempts > n.correct))
@@ -28,12 +36,12 @@
     <span class="sub">{summary.correct} von {summary.total} richtig</span>
   </div>
 
-  {#if unlocked.length > 0}
+  {#if achieved.length > 0}
     <p class="unlock" role="status">
-      🎉 Neue Stufe freigeschaltet: <b>{unlocked.map((id) => `${id} · ${getLevel(id).label}`).join(', ')}</b>
+      🎉 Stufe geschafft: <b>{achieved.map((id) => `${id} · ${getLevel(id).label}`).join(', ')}</b>
     </p>
   {:else}
-    <p class="note">Die nächste Stufe öffnet sich bei ca. 80 % über die letzten 20 Versuche einer Stufe.</p>
+    <p class="note">Eine Stufe gilt als geschafft bei ca. 80 % über die letzten 20 Versuche.</p>
   {/if}
 
   <h2>Pro Ton</h2>
@@ -53,7 +61,12 @@
   {/if}
 
   <div class="buttons">
-    <button class="go" onclick={onagain}>{unlocked.length > 0 ? `Weiter mit ${unlocked[0]}` : 'Nochmal'}</button>
+    {#if justDone && nextLevel}
+      <button class="go" onclick={() => onnext(nextLevel)}>Weiter mit {nextLevel}</button>
+      <button class="ghost" onclick={onagain}>Nochmal {summary.level}</button>
+    {:else}
+      <button class="go" onclick={onagain}>Nochmal</button>
+    {/if}
     <button class="ghost" onclick={onhome}>Zur Auswahl</button>
   </div>
 </main>

@@ -1,6 +1,7 @@
 import { RECENT_ATTEMPTS, type Progress } from '../storage/schema'
 import { CHROMATIC_SHARPS } from '../theory/notes'
 import { LEVELS, type LevelId } from '../theory/tasks'
+import { levelMark, type Mark } from './marks'
 import { recentStat } from './progress'
 
 /** Aufbereitete Zahlen für den Statistik-Screen (rein, aus den gespeicherten Daten). */
@@ -8,7 +9,7 @@ import { recentStat } from './progress'
 export interface LevelStat {
   id: LevelId
   label: string
-  unlocked: boolean
+  mark: Mark
   /** Letzte Versuche (höchstens 20) */
   attempts: number
   accuracy: number
@@ -45,7 +46,7 @@ export interface Stats {
 export function buildStats(progress: Progress, maxRounds = 10): Stats {
   const levels = LEVELS.map((l): LevelStat => {
     const s = recentStat(progress, l.id)
-    return { id: l.id, label: l.label, unlocked: progress.unlocked.includes(l.id), attempts: s.attempts, accuracy: s.accuracy }
+    return { id: l.id, label: l.label, mark: levelMark(progress, l.id), attempts: s.attempts, accuracy: s.accuracy }
   })
 
   const byTone = new Map<string, { hits: number; misses: number }>()

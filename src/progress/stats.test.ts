@@ -10,7 +10,7 @@ describe('Statistik', () => {
     expect(s.tones.every((t) => t.attempts === 0 && t.accuracy === null)).toBe(true)
     expect(s.rounds).toEqual([])
     expect(s.totalAttempts).toBe(0)
-    expect(s.levels.map((l) => [l.id, l.unlocked])).toEqual([['1a', true], ['1b', false], ['1c', false], ['1d', false], ['1e', false]])
+    expect(s.levels.map((l) => [l.id, l.mark])).toEqual([['1a', 'neu'], ['1b', 'neu'], ['1c', 'neu'], ['1d', 'neu'], ['1e', 'neu']])
   })
 
   it('Zahlen stimmen mit den gespeicherten Daten überein', () => {
@@ -32,7 +32,8 @@ describe('Statistik', () => {
     expect(s.totalAttempts).toBe(5)
 
     const a = s.levels.find((l) => l.id === '1a')!
-    expect(a).toMatchObject({ attempts: 4, accuracy: 0.75, unlocked: true })
+    expect(a).toMatchObject({ attempts: 4, accuracy: 0.75, mark: 'begonnen' })
+    expect(s.levels.find((l) => l.id === '1e')?.mark).toBe('begonnen')
     expect(s.rounds.map((r) => r.accuracy)).toEqual([0.7, 0.9])
   })
 

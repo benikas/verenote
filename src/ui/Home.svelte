@@ -2,10 +2,12 @@
   import { audio } from '../audio/engine'
   import { TEMPO_MAX, TEMPO_MIN, TEMPO_STEP, taskTiming } from '../exercise/settings'
   import { recentStat } from '../progress/progress'
-  import { currentLevel, isUnlocked, unlockHint } from '../progress/unlock'
+  import { MARK_LABEL, levelMark } from '../progress/marks'
+  import { shouldRemind, dismissReminder } from '../storage/backup'
   import { RECENT_ATTEMPTS, ROUND_LENGTHS } from '../storage/schema'
   import { LEVELS, type LevelId } from '../theory/tasks'
-  import { persistSoon, progress, settings } from './data.svelte'
+  import { backup, persistNow, persistSoon, progress, settings } from './data.svelte'
+  import { exportProgress } from './exportFile'
 
   let {
     onstart,
@@ -21,9 +23,30 @@
     '1e': 'Auch die schwarzen Tasten: Töne mit # und b.',
   }
 
-  /** Lernpfad: Es wird immer die höchste freigeschaltete Stufe geübt. */
-  const current = $derived(currentLevel(progress))
+  /** Gewählte Stufe (zuletzt benutzte, gespeichert). Nichts ist gesperrt. */
+  const level = $derived(settings.level)
   const info = (id: LevelId) => recentStat(progress, id)
+
+  function setLevel(id: LevelId) {
+    settings.level = id
+    persistSoon()
+  }
+
+  // Erinnerung an den Export (2.11)
+  const remind = $derived(shouldRemind(backup))
+  let exportNote = $state<string | null>(null)
+
+  async function exportNow() {
+    exportNote = null
+    const r = await exportProgress()
+    if (r.ok) exportNote = 'Gesichert.'
+    else if (!r.cancelled) exportNote = 'Export nicht möglich.'
+  }
+
+  function dismiss() {
+    dismissReminder(backup)
+    void persistNow()
+  }
 
   function setLength(n: number) {
     settings.length = n
@@ -45,31 +68,43 @@
     war.
   </p>
 
-  <h2>Lernpfad</h2>
-  <ol class="levels" aria-label="Lernpfad">
+  {#if remind}
+    <div class="remind" role="status">
+      <span>Du hast {backup.roundsSinceExport} Runden nicht gesichert. Ein Export schützt deinen Fortschritt.</span>
+      <div class="remind-actions">
+        <button onclick={exportNow}>Jetzt exportieren</button>
+        <button class="x" aria-label="Hinweis ausblenden" onclick={dismiss}>✕</button>
+      </div>
+    </div>
+  {:else if exportNote}
+    <p class="note" role="status">{exportNote}</p>
+  {/if}
+
+  <h2>Stufe</h2>
+  <div class="levels" role="radiogroup" aria-label="Stufe">
     {#each LEVELS as l (l.id)}
-      {@const open = isUnlocked(progress, l.id)}
+      {@const mark = levelMark(progress, l.id)}
       {@const st = info(l.id)}
-      <li class="level" class:current={l.id === current} class:locked={!open}>
+      <button
+        class="level"
+        class:selected={level === l.id}
+        role="radio"
+        aria-checked={level === l.id}
+        onclick={() => setLevel(l.id)}
+      >
         <span class="name">
-          {#if !open}<span aria-hidden="true">🔒 </span>{/if}{l.id} · {l.label}
-          {#if l.id === current}<span class="badge">Jetzt</span>{/if}
+          {l.id} · {l.label}
+          <span class="badge {mark}">{mark === 'geschafft' ? '✓ ' : ''}{MARK_LABEL[mark]}</span>
         </span>
         <span class="desc">{DESCRIPTIONS[l.id]}</span>
-        {#if open}
+        {#if st.attempts > 0}
           <span class="desc">
-            {#if st.attempts === 0}
-              Noch nicht geübt.
-            {:else}
-              Letzte {st.attempts} {st.attempts === 1 ? 'Versuch' : 'Versuche'}: {Math.round(st.accuracy * 100)} % richtig{#if st.attempts < RECENT_ATTEMPTS} (für die Freischaltung zählen {RECENT_ATTEMPTS}){/if}
-            {/if}
+            Letzte {st.attempts} {st.attempts === 1 ? 'Versuch' : 'Versuche'}: {Math.round(st.accuracy * 100)} % richtig{#if mark !== 'geschafft' && st.attempts < RECENT_ATTEMPTS}&nbsp;(geschafft ab {Math.round(settings.doneThreshold * 100)} % über {RECENT_ATTEMPTS}){/if}
           </span>
-        {:else}
-          <span class="desc hint">{unlockHint(progress, l.id, settings.unlockThreshold)}</span>
         {/if}
-      </li>
+      </button>
     {/each}
-  </ol>
+  </div>
 
   <h2>Aufgaben pro Runde</h2>
   <div class="chips" role="radiogroup" aria-label="Aufgaben pro Runde">
@@ -153,7 +188,7 @@
     </div>
   </div>
 
-  <button class="go" onclick={() => onstart(current, settings.length)}>Runde starten · Stufe {current}</button>
+  <button class="go" onclick={() => onstart(level, settings.length)}>Runde starten · Stufe {level}</button>
   <button class="link" onclick={onstats}>Statistik und Daten</button>
   <button class="link" onclick={ontest}>Ton-Prüfung (alle Töne anhören)</button>
 </main>
@@ -200,30 +235,58 @@
     border-radius: 14px;
     padding: 14px 16px;
   }
-  .level.current {
+  .level.selected {
     border-color: var(--accent);
     background: #1d2742;
-  }
-  .level.locked {
-    opacity: 0.75;
-  }
-  .levels {
-    list-style: none;
-    margin: 0;
-    padding: 0;
   }
   .badge {
     margin-left: 8px;
     padding: 2px 8px;
     border-radius: 999px;
-    background: var(--accent);
-    color: #0c1020;
+    background: var(--surface-2);
+    color: var(--muted);
     font-size: 0.7rem;
     font-weight: 700;
     vertical-align: middle;
   }
-  .hint {
-    color: var(--text);
+  .badge.begonnen {
+    background: #3b3015;
+    color: #ffe9a8;
+  }
+  .badge.geschafft {
+    background: #12372a;
+    color: #c9f5de;
+  }
+  .remind {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #3b3015;
+    color: #ffe9a8;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  .remind-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .remind-actions button {
+    background: rgba(255, 255, 255, 0.12);
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: inherit;
+    font-size: 0.9rem;
+  }
+  .remind-actions .x {
+    margin-left: auto;
+  }
+  .note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
   }
   .name {
     font-weight: 600;

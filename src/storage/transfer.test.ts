@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { recordAttempt, recordRound } from '../progress/progress'
-import { updateUnlocks } from '../progress/unlock'
+import { updateDone } from '../progress/marks'
 import { emptyData, type AppData } from './schema'
 import { DATA_KEY, clearData, loadData, memoryStore, saveData } from './store'
 import { exportFileName, exportJson, parseImport } from './transfer'
@@ -13,7 +13,7 @@ function sampleData(): AppData {
   for (let i = 0; i < 20; i++) recordAttempt(d.progress, '1a', i % 2 ? 'E|C' : 'G|C', true)
   recordAttempt(d.progress, '1a', 'D|C', false)
   recordRound(d.progress, '1a', 10, 9, new Date('2026-10-11T12:00:00Z'))
-  updateUnlocks(d.progress, 0.8)
+  updateDone(d.progress, 0.8)
   return d
 }
 
@@ -21,7 +21,7 @@ describe('Export/Import', () => {
   it('Export, Zurücksetzen, Import ergibt denselben Stand', async () => {
     const store = memoryStore()
     const before = sampleData()
-    expect(before.progress.unlocked).toContain('1b')
+    expect(before.progress.done).toContain('1a')
     await saveData(store, before)
 
     const file = exportJson((await loadData(store)).data)
@@ -38,7 +38,7 @@ describe('Export/Import', () => {
 
   it('Export ist lesbares JSON mit Version', () => {
     const json = exportJson(emptyData())
-    expect(JSON.parse(json).version).toBe(1)
+    expect(JSON.parse(json).version).toBe(2)
     expect(json).toContain('\n')
   })
 
@@ -53,11 +53,26 @@ describe('Export/Import', () => {
   })
 
   it('Import bereinigt kaputte Felder statt sie zu übernehmen', () => {
-    const r = parseImport(JSON.stringify({ version: 1, settings: { tempo: 50 }, progress: { items: { 'E|C': { hits: 'x' } } } }))
+    const r = parseImport(JSON.stringify({ version: 2, settings: { tempo: 50 }, progress: { items: { 'E|C': { hits: 'x' } } } }))
     expect(r.ok).toBe(true)
     if (r.ok) {
       expect(r.data.settings.tempo).toBe(2)
       expect(r.data.progress.items['E|C']).toEqual({ hits: 0, misses: 0 })
+    }
+  })
+
+  it('Import einer Exportdatei der Version 1 wird übernommen (nichts geht verloren)', () => {
+    const file = JSON.stringify({
+      version: 1,
+      settings: { tempo: 1.1 },
+      progress: { items: { 'E|C': { hits: 4, misses: 1 } }, recent: { '1a': [true, true] }, rounds: [], unlocked: ['1a', '1b'] },
+    })
+    const r = parseImport(file)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.progress.items['E|C']).toEqual({ hits: 4, misses: 1 })
+      expect(r.data.progress.done).toEqual(['1a'])
+      expect(r.data.settings.tempo).toBe(1.1)
     }
   })
 

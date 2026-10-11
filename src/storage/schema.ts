@@ -5,14 +5,16 @@ import { LEVELS, type LevelId } from '../theory/tasks'
  * Datenformat der gespeicherten Daten (rein, ohne Browser-API).
  * Versioniert: Jede Änderung am Format erhöht DATA_VERSION und bekommt einen Migrationsschritt.
  */
-export const DATA_VERSION = 1
+export const DATA_VERSION = 2
 
 /** Wie viele letzte Versuche pro Stufe für die Freischaltung zählen */
 export const RECENT_ATTEMPTS = 20
 /** Wie viele abgeschlossene Runden im Verlauf bleiben */
 export const MAX_ROUNDS = 30
-/** Standard-Schwellenwert der Freischaltung (Trefferquote über die letzten Versuche) */
-export const DEFAULT_UNLOCK_THRESHOLD = 0.8
+/** Standard-Schwellenwert für „geschafft“ (Trefferquote über die letzten Versuche) */
+export const DEFAULT_DONE_THRESHOLD = 0.8
+/** Nach so vielen Runden ohne Export erscheint die Erinnerung */
+export const EXPORT_REMINDER_ROUNDS = 5
 
 /** Einstellungen, wie sie gespeichert werden: Übungs-Einstellungen plus zuletzt Gewähltes */
 export interface PersistedSettings extends Settings {
@@ -20,12 +22,9 @@ export interface PersistedSettings extends Settings {
   level: LevelId
   /** Zuletzt gewählte Rundenlänge */
   length: number
-  /** Trefferquote 0–1, ab der die nächste Stufe freigeschaltet wird */
-  unlockThreshold: number
+  /** Trefferquote 0–1, ab der eine Stufe als „geschafft“ gilt */
+  doneThreshold: number
 }
-
-/** Die erste Stufe ist immer offen */
-export const FIRST_LEVEL: LevelId = '1a'
 
 export const ROUND_LENGTHS = [10, 15, 20] as const
 
@@ -49,25 +48,38 @@ export interface Progress {
   recent: Partial<Record<LevelId, boolean[]>>
   /** Abgeschlossene Runden, neueste zuletzt */
   rounds: RoundRecord[]
-  /** Freigeschaltete Stufen. Einmal freigeschaltet, bleibt eine Stufe offen (auch wenn die Quote sinkt) */
-  unlocked: LevelId[]
+  /** Stufen mit Markierung „geschafft“. Einmal gesetzt, bleibt sie (auch wenn die Quote später sinkt) */
+  done: LevelId[]
+}
+
+/** Zähler für die Export-Erinnerung (Aufgabe 2.11) */
+export interface Backup {
+  /** Abgeschlossene Runden seit dem letzten Export (oder seit Beginn) */
+  roundsSinceExport: number
+  /** Ab diesem Zählerstand erscheint die Erinnerung. Wegklicken schiebt sie nach hinten */
+  remindAt: number
 }
 
 export interface AppData {
   version: number
   settings: PersistedSettings
   progress: Progress
+  backup: Backup
 }
 
 export const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   ...DEFAULT_SETTINGS,
   level: '1a',
   length: 15,
-  unlockThreshold: DEFAULT_UNLOCK_THRESHOLD,
+  doneThreshold: DEFAULT_DONE_THRESHOLD,
 }
 
 export function emptyProgress(): Progress {
-  return { items: {}, recent: {}, rounds: [], unlocked: [FIRST_LEVEL] }
+  return { items: {}, recent: {}, rounds: [], done: [] }
+}
+
+export function emptyBackup(): Backup {
+  return { roundsSinceExport: 0, remindAt: EXPORT_REMINDER_ROUNDS }
 }
 
 export function emptyData(): AppData {
@@ -75,6 +87,7 @@ export function emptyData(): AppData {
     version: DATA_VERSION,
     settings: { ...DEFAULT_PERSISTED_SETTINGS },
     progress: emptyProgress(),
+    backup: emptyBackup(),
   }
 }
 
@@ -100,7 +113,8 @@ function cleanSettings(raw: unknown): PersistedSettings {
     tempo: num(raw.tempo, d.tempo, TEMPO_MIN, TEMPO_MAX),
     level: isLevel(raw.level) ? raw.level : d.level,
     length: (ROUND_LENGTHS as readonly number[]).includes(raw.length as number) ? (raw.length as number) : d.length,
-    unlockThreshold: num(raw.unlockThreshold, d.unlockThreshold, 0.5, 1),
+    // Version 1 nannte es unlockThreshold
+    doneThreshold: num(raw.doneThreshold ?? raw.unlockThreshold, d.doneThreshold, 0.5, 1),
   }
 }
 
@@ -131,12 +145,38 @@ function cleanProgress(raw: unknown): Progress {
       }))
       .slice(-MAX_ROUNDS)
   }
-  if (Array.isArray(raw.unlocked)) {
-    const ids = raw.unlocked.filter(isLevel)
-    // In der Reihenfolge der Stufen, ohne Doppelte, die erste immer dabei
-    out.unlocked = LEVELS.map((l) => l.id).filter((id) => id === FIRST_LEVEL || ids.includes(id))
+  if (Array.isArray(raw.done)) {
+    const ids = raw.done.filter(isLevel)
+    // In der Reihenfolge der Stufen, ohne Doppelte
+    out.done = LEVELS.map((l) => l.id).filter((id) => ids.includes(id))
   }
   return out
+}
+
+/**
+ * Version 1 → 2: Die Freischaltung (`unlocked`) wird zur Markierung „geschafft“.
+ * Eine Stufe gilt als geschafft, wenn ihre Folgestufe freigeschaltet war (so ging sie auf)
+ * oder wenn ihre letzten Versuche die Schwelle ohnehin erfüllen. Nichts geht verloren:
+ * Versuche, Items, Runden und Einstellungen bleiben unverändert.
+ */
+function doneFromV1(raw: Record<string, unknown>, progress: Progress, threshold: number): LevelId[] {
+  const unlocked = Array.isArray(raw.unlocked) ? raw.unlocked.filter(isLevel) : []
+  const done = new Set<LevelId>()
+  LEVELS.forEach((l, i) => {
+    const next = LEVELS[i + 1]
+    if (next && unlocked.includes(next.id)) done.add(l.id)
+    const recent = progress.recent[l.id] ?? []
+    if (recent.length >= RECENT_ATTEMPTS && recent.filter(Boolean).length / recent.length >= threshold) done.add(l.id)
+  })
+  return LEVELS.map((l) => l.id).filter((id) => done.has(id))
+}
+
+function cleanBackup(raw: unknown): Backup {
+  const d = emptyBackup()
+  if (!isObject(raw)) return d
+  const rounds = count(raw.roundsSinceExport)
+  const remindAt = typeof raw.remindAt === 'number' && Number.isFinite(raw.remindAt) ? Math.max(1, Math.floor(raw.remindAt)) : d.remindAt
+  return { roundsSinceExport: rounds, remindAt }
 }
 
 export type MigrationStatus =
@@ -162,11 +202,15 @@ export function migrate(raw: unknown): Migration {
   }
   if (raw.version > DATA_VERSION) return { data: emptyData(), status: 'newer' }
 
-  // Hier kommen künftig Schritte "von Version n auf n+1" hinzu (while version < DATA_VERSION).
+  const settings = cleanSettings(raw.settings)
+  const progress = cleanProgress(raw.progress)
+  if (raw.version < 2) progress.done = doneFromV1(raw.progress && isObject(raw.progress) ? raw.progress : {}, progress, settings.doneThreshold)
+  // Hier kommen künftig weitere Schritte "von Version n auf n+1" hinzu.
   const data: AppData = {
     version: DATA_VERSION,
-    settings: cleanSettings(raw.settings),
-    progress: cleanProgress(raw.progress),
+    settings,
+    progress,
+    backup: cleanBackup(raw.backup),
   }
   return { data, status: raw.version === DATA_VERSION ? 'ok' : 'migrated' }
 }

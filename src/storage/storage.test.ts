@@ -69,6 +69,47 @@ describe('Migration', () => {
     }
   })
 
+  it('Version 1 → 2 (Konzept v5): nichts geht verloren, Freischaltung wird zu „geschafft“', () => {
+    const v1 = {
+      version: 1,
+      settings: { neutralize: false, neutralLength: 'long', tempo: 0.9, level: '1c', length: 20, unlockThreshold: 0.85 },
+      progress: {
+        items: { 'E|C': { hits: 12, misses: 8 }, 'G|C': { hits: 20, misses: 0 } },
+        // 1a und 1b wurden geschafft (1c ist deshalb freigeschaltet), 1c läuft noch
+        recent: { '1a': [true, true], '1b': Array(20).fill(true), '1c': [true, false, true] },
+        rounds: [{ at: '2026-10-10T10:00:00.000Z', level: '1b', total: 10, correct: 9 }],
+        unlocked: ['1a', '1b', '1c'],
+      },
+    }
+    const m = migrate(v1)
+    expect(m.status).toBe('migrated')
+    expect(m.data.version).toBe(DATA_VERSION)
+    // unverändert übernommen
+    expect(m.data.settings).toMatchObject({ neutralize: false, neutralLength: 'long', tempo: 0.9, level: '1c', length: 20, doneThreshold: 0.85 })
+    expect(m.data.progress.items).toEqual(v1.progress.items)
+    expect(m.data.progress.recent).toEqual(v1.progress.recent)
+    expect(m.data.progress.rounds).toEqual(v1.progress.rounds)
+    // 1a und 1b waren Voraussetzung für 1c; 1c selbst ist begonnen, nicht geschafft
+    expect(m.data.progress.done).toEqual(['1a', '1b'])
+    expect(m.data.progress).not.toHaveProperty('unlocked')
+    expect(m.data.backup).toEqual({ roundsSinceExport: 0, remindAt: 5 })
+  })
+
+  it('Version 1: letzte Stufe geschafft, auch ohne Folgestufe (Quote erfüllt)', () => {
+    const m = migrate({ version: 1, progress: { recent: { '1e': Array(20).fill(true) }, unlocked: ['1a', '1b', '1c', '1d', '1e'] } })
+    expect(m.data.progress.done).toEqual(['1a', '1b', '1c', '1d', '1e'])
+  })
+
+  it('Version 1: nur 1a freigeschaltet, nichts geschafft', () => {
+    const m = migrate({ version: 1, progress: { recent: { '1a': [true, false] }, unlocked: ['1a'] } })
+    expect(m.data.progress.done).toEqual([])
+  })
+
+  it('Version 2: Zähler der Export-Erinnerung wird gelesen und bereinigt', () => {
+    expect(migrate({ version: 2, backup: { roundsSinceExport: 3, remindAt: 8 } }).data.backup).toEqual({ roundsSinceExport: 3, remindAt: 8 })
+    expect(migrate({ version: 2, backup: { roundsSinceExport: -1, remindAt: 'x' } }).data.backup).toEqual({ roundsSinceExport: 0, remindAt: 5 })
+  })
+
   it('Version 0 (ohne Felder) wird übernommen und ergänzt', () => {
     const m = migrate({ version: 0 })
     expect(m.status).toBe('migrated')
@@ -78,7 +119,7 @@ describe('Migration', () => {
   it('kaputte Felder fallen auf Standardwerte, gute bleiben', () => {
     const m = migrate({
       version: DATA_VERSION,
-      settings: { tempo: 99, neutralize: 'ja', neutralLength: 'long', level: '9z', length: 15, unlockThreshold: 0.1 },
+      settings: { tempo: 99, neutralize: 'ja', neutralLength: 'long', level: '9z', length: 15, doneThreshold: 0.1 },
       progress: {
         items: { 'E|C': { hits: 2, misses: -4 }, kaputt: 7 },
         recent: { '1a': [true, 'x', false], '1b': 'nein' },
@@ -90,7 +131,7 @@ describe('Migration', () => {
     expect(m.data.settings.neutralize).toBe(true) // Standard
     expect(m.data.settings.neutralLength).toBe('long')
     expect(m.data.settings.level).toBe('1a')
-    expect(m.data.settings.unlockThreshold).toBe(0.5) // untere Grenze
+    expect(m.data.settings.doneThreshold).toBe(0.5) // untere Grenze
     expect(m.data.progress.items).toEqual({ 'E|C': { hits: 2, misses: 0 } })
     expect(m.data.progress.recent).toEqual({ '1a': [true, false] })
     expect(m.data.progress.rounds).toEqual([{ at: '2026-01-01T00:00:00Z', level: '1a', total: 10, correct: 10 }])

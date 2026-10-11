@@ -1,9 +1,12 @@
 <script lang="ts">
   import { buildStats } from '../progress/stats'
   import { RECENT_ATTEMPTS, emptyData, type AppData } from '../storage/schema'
-  import { exportFileName, exportJson, parseImport } from '../storage/transfer'
+  import { markExported } from '../storage/backup'
+  import { parseImport } from '../storage/transfer'
   import { displayName } from '../theory/notes'
-  import { applyData, persistNow, progress, snapshot, storageState } from './data.svelte'
+  import { MARK_LABEL } from '../progress/marks'
+  import { applyData, backup, persistNow, progress, storageState } from './data.svelte'
+  import { exportProgress } from './exportFile'
 
   let { onback }: { onback: () => void } = $props()
 
@@ -18,24 +21,9 @@
 
   async function doExport() {
     message = null
-    const file = new File([exportJson(snapshot())], exportFileName(), { type: 'application/json' })
-    try {
-      // Auf dem Handy: Teilen-Dialog („In Dateien sichern“). Sonst normaler Download.
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Gehörtraining Fortschritt' })
-      } else {
-        const url = URL.createObjectURL(file)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = file.name
-        a.click()
-        setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      }
-      message = { kind: 'ok', text: `Exportiert: ${file.name}` }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return // Teilen abgebrochen
-      message = { kind: 'error', text: 'Export nicht möglich.' }
-    }
+    const r = await exportProgress()
+    if (r.ok) message = { kind: 'ok', text: `Exportiert: ${r.fileName}` }
+    else if (!r.cancelled) message = { kind: 'error', text: 'Export nicht möglich.' }
   }
 
   async function onFile(e: Event) {
@@ -53,7 +41,7 @@
     pending = {
       kind: 'import',
       data: result.data,
-      info: `${file.name}: ${s.totalAttempts} Versuche, ${result.data.progress.rounds.length} Runden, ${result.data.progress.unlocked.length} Stufen offen.`,
+      info: `${file.name}: ${s.totalAttempts} Versuche, ${result.data.progress.rounds.length} Runden, ${result.data.progress.done.length} Stufen geschafft.`,
     }
   }
 
@@ -62,6 +50,7 @@
     const action = pending
     pending = null
     applyData(action.kind === 'import' ? action.data : emptyData())
+    markExported(backup) // frisch importiert oder zurückgesetzt: nichts zu sichern
     const saved = await persistNow()
     const done = action.kind === 'import' ? 'Import abgeschlossen.' : 'Alle Daten wurden zurückgesetzt.'
     message = { kind: saved || !storageState.writable ? 'ok' : 'error', text: saved ? done : `${done} Speichern auf diesem Gerät ist nicht möglich.` }
@@ -81,12 +70,10 @@
   <h2>Stufen</h2>
   <ul class="rows">
     {#each stats.levels as l (l.id)}
-      <li class:locked={!l.unlocked}>
-        <span class="name">{l.unlocked ? '' : '🔒 '}{l.id} · {l.label}</span>
-        {#if !l.unlocked}
-          <span class="val muted">gesperrt</span>
-        {:else if l.attempts === 0}
-          <span class="val muted">noch nicht geübt</span>
+      <li>
+        <span class="name">{l.mark === 'geschafft' ? '✓ ' : ''}{l.id} · {l.label}</span>
+        {#if l.attempts === 0}
+          <span class="val muted">{MARK_LABEL[l.mark]}{l.mark === 'neu' ? '' : ', keine aktuellen Versuche'}</span>
         {:else}
           <span class="bar"><span class="fill" style:width="{l.accuracy * 100}%"></span></span>
           <span class="val">{pct(l.accuracy)} <small>({l.attempts}/{RECENT_ATTEMPTS})</small></span>
@@ -94,7 +81,7 @@
       </li>
     {/each}
   </ul>
-  <p class="foot">Quote über die letzten {RECENT_ATTEMPTS} Versuche je Stufe.</p>
+  <p class="foot">Quote über die letzten {RECENT_ATTEMPTS} Versuche je Stufe. „✓“ = geschafft (bleibt gesetzt).</p>
 
   <h2>Töne</h2>
   <ul class="rows tones">
@@ -226,9 +213,6 @@
   }
   .tones li {
     grid-template-columns: 4.5em 1fr auto;
-  }
-  .rows .locked {
-    opacity: 0.7;
   }
   .name {
     font-weight: 600;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyProgress, type Progress } from '../storage/schema'
 import { recentStat, recordAttempt, recordRound } from './progress'
-import { isUnlocked, meetsUnlockRule, unlockHint, updateUnlocks } from './unlock'
+import { MARK_LABEL, isDone, levelMark, meetsDoneRule, recommendedLevel, updateDone } from './marks'
 
 function attempts(p: Progress, level: '1a' | '1b' | '1c' | '1d' | '1e', hits: number, misses: number) {
   for (let i = 0; i < hits; i++) recordAttempt(p, level, 'E|C', true)
@@ -37,77 +37,86 @@ describe('Fortschritt', () => {
   })
 })
 
-describe('Freischaltung 1a → 1b → …', () => {
-  it('am Anfang ist nur 1a offen', () => {
+describe('Markierung neu · begonnen · geschafft', () => {
+  it('am Anfang sind alle Stufen neu, nichts ist gesperrt oder geschafft', () => {
     const p = emptyProgress()
-    expect(isUnlocked(p, '1a')).toBe(true)
-    expect(isUnlocked(p, '1b')).toBe(false)
+    for (const l of ['1a', '1b', '1c', '1d', '1e'] as const) {
+      expect(levelMark(p, l)).toBe('neu')
+      expect(isDone(p, l)).toBe(false)
+    }
+    expect(MARK_LABEL.geschafft).toBe('Geschafft')
   })
 
-  it('80 % über 20 Versuche schalten 1b frei, 79 % nicht', () => {
+  it('begonnen ab dem ersten Versuch', () => {
+    const p = emptyProgress()
+    attempts(p, '1c', 1, 0)
+    expect(levelMark(p, '1c')).toBe('begonnen')
+    expect(levelMark(p, '1a')).toBe('neu')
+  })
+
+  it('80 % über 20 Versuche: geschafft, 79 % nicht', () => {
     const ok = emptyProgress()
     attempts(ok, '1a', 16, 4) // 80 %
-    expect(meetsUnlockRule(ok, '1a', 0.8)).toBe(true)
-    expect(updateUnlocks(ok, 0.8)).toEqual(['1b'])
-    expect(isUnlocked(ok, '1b')).toBe(true)
+    expect(meetsDoneRule(ok, '1a', 0.8)).toBe(true)
+    expect(updateDone(ok, 0.8)).toEqual(['1a'])
+    expect(levelMark(ok, '1a')).toBe('geschafft')
 
     const no = emptyProgress()
     attempts(no, '1a', 15, 5) // 75 %
-    expect(updateUnlocks(no, 0.8)).toEqual([])
-    expect(isUnlocked(no, '1b')).toBe(false)
+    expect(updateDone(no, 0.8)).toEqual([])
+    expect(levelMark(no, '1a')).toBe('begonnen')
   })
 
   it('weniger als 20 Versuche genügen nie, auch bei 100 %', () => {
     const p = emptyProgress()
-    attempts(p, '1a', 19, 0)
-    expect(updateUnlocks(p, 0.8)).toEqual([])
-    attempts(p, '1a', 1, 0)
-    expect(updateUnlocks(p, 0.8)).toEqual(['1b'])
+    attempts(p, '1b', 19, 0)
+    expect(updateDone(p, 0.8)).toEqual([])
+    attempts(p, '1b', 1, 0)
+    expect(updateDone(p, 0.8)).toEqual(['1b'])
   })
 
-  it('nur die jeweils nächste Stufe geht auf, nie zwei auf einmal', () => {
+  it('jede Stufe kann geschafft werden, auch ohne die vorherige (nichts ist gesperrt)', () => {
     const p = emptyProgress()
-    attempts(p, '1a', 20, 0)
-    attempts(p, '1b', 20, 0) // 1b war noch gesperrt, zählt nicht für 1c
-    expect(updateUnlocks(p, 0.8)).toEqual(['1b'])
-    expect(isUnlocked(p, '1c')).toBe(false)
-    expect(updateUnlocks(p, 0.8)).toEqual(['1c']) // nach der nächsten Prüfung (jetzt ist 1b offen)
+    attempts(p, '1d', 20, 0)
+    expect(updateDone(p, 0.8)).toEqual(['1d'])
+    expect(levelMark(p, '1a')).toBe('neu')
   })
 
-  it('freigeschaltet bleibt freigeschaltet, auch wenn die Quote später sinkt', () => {
+  it('geschafft bleibt gesetzt, auch wenn die Quote später sinkt; die Quote selbst sinkt sichtbar', () => {
     const p = emptyProgress()
     attempts(p, '1a', 20, 0)
-    updateUnlocks(p, 0.8)
+    updateDone(p, 0.8)
     attempts(p, '1a', 0, 20)
-    expect(updateUnlocks(p, 0.8)).toEqual([])
-    expect(isUnlocked(p, '1b')).toBe(true)
+    expect(updateDone(p, 0.8)).toEqual([])
+    expect(levelMark(p, '1a')).toBe('geschafft')
+    expect(recentStat(p, '1a').accuracy).toBe(0)
+  })
+
+  it('meldet eine Stufe nur einmal als neu geschafft', () => {
+    const p = emptyProgress()
+    attempts(p, '1a', 20, 0)
+    expect(updateDone(p, 0.8)).toEqual(['1a'])
+    attempts(p, '1a', 5, 0)
+    expect(updateDone(p, 0.8)).toEqual([])
   })
 
   it('Schwellenwert ist konfigurierbar', () => {
     const p = emptyProgress()
     attempts(p, '1a', 18, 2) // 90 %
-    expect(updateUnlocks(p, 0.95)).toEqual([])
-    expect(updateUnlocks(p, 0.9)).toEqual(['1b'])
+    expect(updateDone(p, 0.95)).toEqual([])
+    expect(updateDone(p, 0.9)).toEqual(['1a'])
   })
 
-  it('Kette bis 1e', () => {
+  it('Empfehlung: erste Stufe, die noch nicht geschafft ist', () => {
     const p = emptyProgress()
-    for (const l of ['1a', '1b', '1c', '1d'] as const) {
+    expect(recommendedLevel(p)).toBe('1a')
+    attempts(p, '1a', 20, 0)
+    updateDone(p, 0.8)
+    expect(recommendedLevel(p)).toBe('1b')
+    for (const l of ['1b', '1c', '1d', '1e'] as const) {
       attempts(p, l, 20, 0)
-      expect(updateUnlocks(p, 0.8)).toHaveLength(1)
     }
-    expect(p.unlocked).toEqual(['1a', '1b', '1c', '1d', '1e'])
-    expect(updateUnlocks(p, 0.8)).toEqual([])
-  })
-
-  it('Hinweis sagt, was fehlt', () => {
-    const p = emptyProgress()
-    expect(unlockHint(p, '1a', 0.8)).toBe('')
-    expect(unlockHint(p, '1b', 0.8)).toBe('Noch 20 Versuche in 1a, mit mindestens 80 % richtig.')
-    attempts(p, '1a', 5, 4)
-    expect(unlockHint(p, '1b', 0.8)).toBe('Noch 11 Versuche in 1a, mit mindestens 80 % richtig.')
-    attempts(p, '1a', 0, 11) // 20 Versuche, 5 richtig? (letzte 20: 4 Treffer, 16 Fehler)
-    expect(unlockHint(p, '1b', 0.8)).toMatch(/^1a: \d+ % richtig über die letzten 20 Versuche\. Nötig: 80 %\.$/)
-    expect(unlockHint(p, '1c', 0.8)).toBe('Erst 1b freischalten.')
+    updateDone(p, 0.8)
+    expect(recommendedLevel(p)).toBeNull()
   })
 })
