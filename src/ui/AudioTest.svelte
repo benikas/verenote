@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { audio, type Instrument, type LoadState } from '../audio/engine'
   import { frequencyOf } from '../audio/samples'
   import { taskTiming } from '../exercise/settings'
@@ -16,8 +17,12 @@
   let running = $state(false)
 
   const notes = $derived(CHROMATIC_SHARPS.map((pc) => `${pc}${octave}`))
+  /** Zählt Audio-Statuswechsel mit, damit die Anzeige „Audio …“ nach App-Wechseln aktuell bleibt */
+  let tick = $state(0)
+  onMount(() => audio.onStatus(() => tick++))
   const info = $derived.by(() => {
     void load // bei Zustandswechsel neu lesen
+    void tick
     return audio.info()
   })
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))

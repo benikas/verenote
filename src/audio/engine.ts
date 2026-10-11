@@ -359,7 +359,8 @@ export class AudioEngine {
   info(): { state: string; sampleRate: number; baseLatencyMs: number; outputLatencyMs: number | null } {
     const ctx = Tone.getContext().rawContext as AudioContext
     return {
-      state: ctx.state,
+      // "verbraucht" = nach App-Wechsel steht ein Neuaufbau an (iOS, siehe B2)
+      state: this.stale ? `${ctx.state}, verbraucht` : ctx.state,
       sampleRate: ctx.sampleRate,
       baseLatencyMs: Math.round((ctx.baseLatency ?? 0) * 1000),
       outputLatencyMs: ctx.outputLatency != null ? Math.round(ctx.outputLatency * 1000) : null,
