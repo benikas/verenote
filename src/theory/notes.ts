@@ -46,3 +46,17 @@ export function semitonesBetween(a: string, b: string): number {
   if (ma == null || mb == null) throw new Error(`Töne brauchen eine Oktave: ${a}, ${b}`)
   return mb - ma
 }
+
+const FLAT_NAMES: Record<string, string> = {
+  'C#': 'Db',
+  'D#': 'Eb',
+  'F#': 'Gb',
+  'G#': 'Ab',
+  'A#': 'Bb',
+}
+
+/** Anzeigename einer Pitch Class: Stammtöne wie sie sind, schwarze Tasten mit beiden Namen ("C#/Db"). */
+export function displayName(pc: string): string {
+  const flat = FLAT_NAMES[pc]
+  return flat ? `${pc}/${flat}` : pc
+}

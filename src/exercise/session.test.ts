@@ -192,3 +192,29 @@ describe('Session: Zusammenfassung', () => {
     expect(sum).toMatchObject({ total: 0, correct: 0, accuracy: 0 })
   })
 })
+
+describe('Stufen 1d und 1e in der Session', () => {
+  it('1d: Zielton in den Oktaven 3, 4 und 5, jeder Ton aus den Stammtönen', () => {
+    const s = new Session({ level: '1d', length: 60, rng: seededRng(7) })
+    const octaves = new Set<string>()
+    for (let i = 0; i < 60; i++) {
+      const t = s.next()
+      octaves.add(t.target.slice(-1))
+      expect(['C', 'D', 'E', 'F', 'G', 'A', 'B']).toContain(t.target.slice(0, -1))
+      s.answer(t.target)
+    }
+    expect([...octaves].sort()).toEqual(['3', '4', '5'])
+  })
+
+  it('1e: alle zwölf Töne kommen vor, Antwort mit Kreuz wird richtig bewertet', () => {
+    const s = new Session({ level: '1e', length: 80, rng: seededRng(3) })
+    const notes = new Set<string>()
+    for (let i = 0; i < 80; i++) {
+      const t = s.next()
+      notes.add(t.target.slice(0, -1))
+      expect(s.answer(t.target.slice(0, -1)).correct).toBe(true)
+    }
+    expect(notes.size).toBe(12)
+    expect(notes.has('F#')).toBe(true)
+  })
+})

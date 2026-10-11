@@ -1,8 +1,11 @@
 <script lang="ts">
   import { audio } from '../audio/engine'
   import { TEMPO_MAX, TEMPO_MIN, TEMPO_STEP, taskTiming } from '../exercise/settings'
+  import { recentStat } from '../progress/progress'
+  import { currentLevel, isUnlocked, unlockHint } from '../progress/unlock'
+  import { RECENT_ATTEMPTS, ROUND_LENGTHS } from '../storage/schema'
   import { LEVELS, type LevelId } from '../theory/tasks'
-  import { settings } from './settings.svelte'
+  import { persistSoon, progress, settings } from './data.svelte'
 
   let {
     onstart,
@@ -13,11 +16,18 @@
     '1a': 'Nur drei Töne, gut zu unterscheiden. Der beste Einstieg.',
     '1b': 'Zwei Töne mehr: D und F dazu.',
     '1c': 'Alle sieben Stammtöne von C bis B.',
+    '1d': 'Der Zielton kann eine Oktave tiefer oder höher liegen.',
+    '1e': 'Auch die schwarzen Tasten: Töne mit # und b.',
   }
-  const LENGTHS = [10, 15, 20]
 
-  let level = $state<LevelId>('1a')
-  let length = $state(15)
+  /** Lernpfad: Es wird immer die höchste freigeschaltete Stufe geübt. */
+  const current = $derived(currentLevel(progress))
+  const info = (id: LevelId) => recentStat(progress, id)
+
+  function setLength(n: number) {
+    settings.length = n
+    persistSoon()
+  }
 
   const seconds = (n: number) => `${n.toFixed(2).replace('.', ',')} s`
 
@@ -34,31 +44,41 @@
     war.
   </p>
 
-  <h2>Stufe</h2>
-  <div class="levels" role="radiogroup" aria-label="Stufe">
+  <h2>Lernpfad</h2>
+  <ol class="levels" aria-label="Lernpfad">
     {#each LEVELS as l (l.id)}
-      <button
-        class="level"
-        class:selected={level === l.id}
-        role="radio"
-        aria-checked={level === l.id}
-        onclick={() => (level = l.id)}
-      >
-        <span class="name">{l.id} · {l.label}</span>
+      {@const open = isUnlocked(progress, l.id)}
+      {@const st = info(l.id)}
+      <li class="level" class:current={l.id === current} class:locked={!open}>
+        <span class="name">
+          {#if !open}<span aria-hidden="true">🔒 </span>{/if}{l.id} · {l.label}
+          {#if l.id === current}<span class="badge">Jetzt</span>{/if}
+        </span>
         <span class="desc">{DESCRIPTIONS[l.id]}</span>
-      </button>
+        {#if open}
+          <span class="desc">
+            {#if st.attempts === 0}
+              Noch nicht geübt.
+            {:else}
+              Letzte {st.attempts} {st.attempts === 1 ? 'Versuch' : 'Versuche'}: {Math.round(st.accuracy * 100)} % richtig{#if st.attempts < RECENT_ATTEMPTS} (für die Freischaltung zählen {RECENT_ATTEMPTS}){/if}
+            {/if}
+          </span>
+        {:else}
+          <span class="desc hint">{unlockHint(progress, l.id, settings.unlockThreshold)}</span>
+        {/if}
+      </li>
     {/each}
-  </div>
+  </ol>
 
   <h2>Aufgaben pro Runde</h2>
   <div class="chips" role="radiogroup" aria-label="Aufgaben pro Runde">
-    {#each LENGTHS as n (n)}
+    {#each ROUND_LENGTHS as n (n)}
       <button
         class="chip"
-        class:selected={length === n}
+        class:selected={settings.length === n}
         role="radio"
-        aria-checked={length === n}
-        onclick={() => (length = n)}>{n}</button
+        aria-checked={settings.length === n}
+        onclick={() => setLength(n)}>{n}</button
       >
     {/each}
   </div>
@@ -76,7 +96,10 @@
         role="switch"
         aria-checked={settings.neutralize}
         aria-label="Gehör neutralisieren"
-        onclick={() => (settings.neutralize = !settings.neutralize)}><span class="knob"></span></button
+        onclick={() => {
+          settings.neutralize = !settings.neutralize
+          persistSoon()
+        }}><span class="knob"></span></button
       >
     </div>
 
@@ -89,7 +112,10 @@
           role="radio"
           aria-checked={settings.neutralLength === 'short'}
           disabled={!settings.neutralize}
-          onclick={() => (settings.neutralLength = 'short')}>Kurz</button
+          onclick={() => {
+            settings.neutralLength = 'short'
+            persistSoon()
+          }}>Kurz</button
         >
         <button
           class="chip"
@@ -97,7 +123,10 @@
           role="radio"
           aria-checked={settings.neutralLength === 'long'}
           disabled={!settings.neutralize}
-          onclick={() => (settings.neutralLength = 'long')}>Lang</button
+          onclick={() => {
+            settings.neutralLength = 'long'
+            persistSoon()
+          }}>Lang</button
         >
       </div>
     </div>
@@ -116,13 +145,14 @@
         max={TEMPO_MAX}
         step={TEMPO_STEP}
         bind:value={settings.tempo}
+        oninput={() => persistSoon()}
         aria-label="Tempo: Abstand zwischen Referenz- und Zielton"
       />
       <div class="ends"><span>schneller</span><span>langsamer</span></div>
     </div>
   </div>
 
-  <button class="go" onclick={() => onstart(level, length)}>Runde starten</button>
+  <button class="go" onclick={() => onstart(current, settings.length)}>Runde starten · Stufe {current}</button>
   <button class="link" onclick={ontest}>Ton-Prüfung (alle Töne anhören)</button>
 </main>
 
@@ -168,9 +198,30 @@
     border-radius: 14px;
     padding: 14px 16px;
   }
-  .level.selected {
+  .level.current {
     border-color: var(--accent);
     background: #1d2742;
+  }
+  .level.locked {
+    opacity: 0.75;
+  }
+  .levels {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .badge {
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #0c1020;
+    font-size: 0.7rem;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+  .hint {
+    color: var(--text);
   }
   .name {
     font-weight: 600;

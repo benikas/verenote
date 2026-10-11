@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { displayName } from '../theory/notes'
   /**
    * Klaviatur mit einer Oktave (C bis B), Hochformat.
    * Nicht benötigte Tasten sind ausgegraut und nicht antippbar.
@@ -73,12 +74,16 @@
       style:left="{b.boundary * W - BLACK_W / 2}%"
       style:width="{BLACK_W}%"
       disabled={!isEnabled(b.note)}
-      aria-label={b.note}
+      aria-label={displayName(b.note)}
       onpointerdown={() => press(b.note)}
       onclick={(e) => {
         if (e.detail === 0) press(b.note)
       }}
-    ></button>
+    >
+      {#if isEnabled(b.note)}
+        <span class="blabel">{b.note}<br />{displayName(b.note).split('/')[1]}</span>
+      {/if}
+    </button>
   {/each}
 </div>
 
@@ -134,6 +139,23 @@
     border-radius: 0 0 8px 8px;
     box-shadow: 0 0 0 2px var(--bg);
     z-index: 1;
+  }
+  .black {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 8px;
+  }
+  .blabel {
+    font-size: 0.66rem;
+    line-height: 1.25;
+    font-weight: 600;
+    color: #dfe6ff;
+    pointer-events: none;
+  }
+  .black.correct .blabel,
+  .black.wrong .blabel {
+    color: inherit;
   }
   .black.off {
     background: #1b1e26;

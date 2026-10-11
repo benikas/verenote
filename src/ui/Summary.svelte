@@ -1,11 +1,20 @@
 <script lang="ts">
   import type { SessionSummary } from '../exercise/session'
+  import { displayName } from '../theory/notes'
+  import { getLevel, type LevelId } from '../theory/tasks'
 
   let {
     summary,
+    unlocked = [],
     onagain,
     onhome,
-  }: { summary: SessionSummary; onagain: () => void; onhome: () => void } = $props()
+  }: {
+    summary: SessionSummary
+    /** Mit dieser Runde freigeschaltete Stufen */
+    unlocked?: LevelId[]
+    onagain: () => void
+    onhome: () => void
+  } = $props()
 
   const percent = $derived(Math.round(summary.accuracy * 100))
   const weak = $derived(summary.perNote.filter((n) => n.attempts > n.correct))
@@ -19,19 +28,19 @@
     <span class="sub">{summary.correct} von {summary.total} richtig</span>
   </div>
 
-  <p class="note">
-    {#if percent >= 80}
-      Stark. Ab etwa 80 % kannst du die nächste Stufe probieren.
-    {:else}
-      Ab etwa 80 % lohnt sich die nächste Stufe. Bleib noch etwas bei dieser.
-    {/if}
-  </p>
+  {#if unlocked.length > 0}
+    <p class="unlock" role="status">
+      🎉 Neue Stufe freigeschaltet: <b>{unlocked.map((id) => `${id} · ${getLevel(id).label}`).join(', ')}</b>
+    </p>
+  {:else}
+    <p class="note">Die nächste Stufe öffnet sich bei ca. 80 % über die letzten 20 Versuche einer Stufe.</p>
+  {/if}
 
   <h2>Pro Ton</h2>
   <ul class="notes">
     {#each summary.perNote as n (n.note)}
       <li class:miss={n.attempts > n.correct}>
-        <span class="name">{n.note}</span>
+        <span class="name">{displayName(n.note)}</span>
         <span class="ratio">
           {#if n.attempts === 0}nicht gefragt{:else}{n.correct} / {n.attempts}{/if}
         </span>
@@ -40,11 +49,11 @@
   </ul>
 
   {#if weak.length > 0}
-    <p class="hint">Zum Üben: {weak.map((n) => n.note).join(', ')}</p>
+    <p class="hint">Zum Üben: {weak.map((n) => displayName(n.note)).join(', ')}</p>
   {/if}
 
   <div class="buttons">
-    <button class="go" onclick={onagain}>Nochmal</button>
+    <button class="go" onclick={onagain}>{unlocked.length > 0 ? `Weiter mit ${unlocked[0]}` : 'Nochmal'}</button>
     <button class="ghost" onclick={onhome}>Zur Auswahl</button>
   </div>
 </main>
@@ -150,5 +159,13 @@
     padding: 16px;
     color: var(--muted);
     font-size: 1rem;
+  }
+  .unlock {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #12372a;
+    color: #c9f5de;
+    line-height: 1.4;
   }
 </style>

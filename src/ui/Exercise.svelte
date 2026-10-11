@@ -8,10 +8,12 @@
     shouldNeutralize,
     taskTiming,
   } from '../exercise/settings'
+  import { recordAttempt } from '../progress/progress'
+  import { displayName, pitchClass, withOctave } from '../theory/notes'
   import { makeNeutralization } from '../theory/neutral'
-  import { getLevel, type Task } from '../theory/tasks'
+  import { getLevel, itemKey, octaveOffset, type Task } from '../theory/tasks'
+  import { persistNow, progress, settings } from './data.svelte'
   import Keyboard from './Keyboard.svelte'
-  import { settings } from './settings.svelte'
 
   let {
     session,
@@ -40,6 +42,14 @@
   const isLast = $derived(answered >= session.length)
   const wrong = $derived(phase === 'feedback' && result !== null && !result.correct)
   const showNext = $derived(wrong || (phase === 'feedback' && manualNext))
+  /** Oktave des Zieltons: Die Klaviatur zeigt immer diese Lage (Stufe 1d: 3, 4 oder 5) */
+  const targetOctave = $derived(task ? Number(task.target.slice(pitchClass(task.target).length)) : 4)
+  const multiOctave = $derived(level.octaves.length > 1)
+  const lage = $derived.by(() => {
+    if (!task) return ''
+    const o = octaveOffset(task)
+    return o < 0 ? 'eine Oktave tiefer als der Referenzton' : o > 0 ? 'eine Oktave höher als der Referenzton' : 'in der Oktave des Referenztons'
+  })
 
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -148,8 +158,10 @@
   function answer(note: string) {
     if (!task || phase !== 'answering') return
     audio.stop()
-    audio.play(`${note}4`, 1.4) // die Klaviatur zeigt Oktave 4
+    audio.play(withOctave(note, targetOctave), 1.4) // die Klaviatur zeigt die Lage des Zieltons
     const r = session.answer(note)
+    recordAttempt(progress, session.level, itemKey(r.task), r.correct)
+    void persistNow() // nach jeder Antwort sichern
     result = r
     answered = session.answered
     if (r.correct) correct += 1
@@ -164,7 +176,7 @@
   function compare() {
     if (!task || !result || result.correct) return
     clearTimeout(timer)
-    void audio.playSequence([task.reference, `${result.given}4`, task.target], timing)
+    void audio.playSequence([task.reference, withOctave(result.given, targetOctave), task.target], timing)
   }
 
   function next() {
@@ -176,7 +188,7 @@
   }
 </script>
 
-<main class="ex" data-phase={phase}>
+<main class="ex" data-phase={phase} data-task={task?.target}>
   <header>
     <button class="close" aria-label="Runde beenden" onclick={onexit}>✕</button>
     <div class="count">
@@ -196,12 +208,16 @@
         {:else if phase === 'answering'}
           Welcher Ton war das?
         {:else if result?.correct}
-          <span class="good">Richtig: {result.expected}</span>
+          <span class="good">Richtig: {displayName(result.expected)}</span>
         {:else if result}
-          <span class="bad">Falsch.</span> Das war <b>{result.expected}</b>, du hast {result.given} gewählt.
+          <span class="bad">Falsch.</span> Das war <b>{displayName(result.expected)}</b>, du hast {displayName(result.given)} gewählt.
         {/if}
       </span>
     </p>
+
+    {#if multiOctave}
+      <p class="lage" class:hidden={phase === 'neutralizing' || phase === 'listening'}>Zielton: {lage}</p>
+    {/if}
 
     <div class="actions">
       <button onclick={replay} disabled={phase === 'neutralizing'}>▶ Nochmal</button>
@@ -345,5 +361,14 @@
   }
   .keys {
     height: clamp(210px, 34dvh, 300px);
+  }
+  .lage {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: center;
+  }
+  .lage.hidden {
+    visibility: hidden;
   }
 </style>

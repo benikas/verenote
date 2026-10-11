@@ -98,9 +98,11 @@ export class Session {
     if (this.issued >= this.length) throw new Error('Die Session ist bereits zu Ende')
 
     const target = this.pickTarget()
+    const octaves = getLevel(this.level).octaves
+    const octave = octaves.length === 1 ? octaves[0] : octaves[Math.min(octaves.length - 1, Math.floor(this.rng() * octaves.length))]
     this.issued += 1
     this.lastTarget = target
-    this.open = makeTask(this.issued, this.level, target)
+    this.open = makeTask(this.issued, this.level, target, octave)
     return this.open
   }
 
