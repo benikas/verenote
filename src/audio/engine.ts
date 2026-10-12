@@ -58,6 +58,12 @@ export class AudioEngine {
    * "running". Dann hilft nur ein neuer Kontext, aufgebaut im nächsten Tippen.
    */
   private stale = false
+  /** Zeitmarke des AudioContext-Takts: Steht er still, während die Uhr läuft, ist der Kontext tot (B3) */
+  private clockMark: { t: number; wall: number } | null = null
+  private heartbeat: ReturnType<typeof setInterval> | null = null
+  /** Wiedergabe, die vor dem Neuaufbau angefordert wurde (Tippen mit pointerdown); wird im Tippen nachgeholt */
+  private pendingPlay: { fn: () => void; at: number } | null = null
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
 
   loadState: LoadState = { phase: 'idle', progress: 0 }
 
@@ -83,16 +89,66 @@ export class AudioEngine {
    */
   async unlock(): Promise<void> {
     if (this.unlocked) return
-    // iOS: Der Stummschalter schaltet Web-Audio sonst stumm. Die Audio-Session-Art
-    // "playback" verhindert das (Safari 16.4+, auf anderen Browsern ohne Wirkung).
-    const nav = navigator as Navigator & { audioSession?: { type: string } }
-    if (nav.audioSession) nav.audioSession.type = 'playback'
-
+    this.engage()
     await Tone.start()
     this.makeSynth()
     this.unlocked = true
     this.bindLifecycle()
     this.bindContext()
+    this.sampleClock()
+  }
+
+  // ---- Audio-Session (B4) ---------------------------------------------------------
+  // iOS: Der Stummschalter schaltet Web-Audio nur dann nicht stumm, wenn die Audio-Session-Art
+  // "playback" ist (Safari 16.4+). Bleibt sie dauerhaft so, zeigt das iPhone aber ständig die
+  // Wiedergabe-Anzeige. Deshalb nur während Töne klingen auf "playback", danach zurück auf "auto".
+  private setSessionType(type: 'playback' | 'auto'): void {
+    const nav = navigator as Navigator & { audioSession?: { type: string } }
+    try {
+      if (nav.audioSession && nav.audioSession.type !== type) nav.audioSession.type = type
+    } catch {
+      /* nicht kritisch */
+    }
+  }
+
+  /** Vor jedem Ton: Session auf "playback"; nach `holdMs` ohne neuen Ton wieder freigeben */
+  private engage(holdMs = 3000): void {
+    this.setSessionType('playback')
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => this.release(), holdMs)
+  }
+
+  private release(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = null
+    this.setSessionType('auto')
+  }
+
+  // ---- Takt-Prüfung (B3) ----------------------------------------------------------
+  private sampleClock(): void {
+    this.clockMark = { t: this.rawCtx.currentTime, wall: performance.now() }
+  }
+
+  /** Der Kontext meldet "running", sein Takt steht aber still, während die Uhr läuft: tot */
+  private clockDead(): boolean {
+    const m = this.clockMark
+    if (!m) return false
+    const wall = (performance.now() - m.wall) / 1000
+    const advanced = this.rawCtx.currentTime - m.t
+    return wall > 1 && advanced < wall * 0.5
+  }
+
+  /** Prüft, ob der Kontext wirklich lebt; sonst gilt er als verbraucht (Neuaufbau im nächsten Tippen) */
+  private checkAlive(): void {
+    if (!this.unlocked) return
+    if (!this.stale && this.clockDead()) {
+      this.stale = true
+      this.markInterrupted()
+      this.checkStatus()
+    }
+    // Marke nur erneuern, wenn der Takt über mindestens eine Sekunde gesund mitgelaufen ist
+    const m = this.clockMark
+    if (!this.stale && m && performance.now() - m.wall > 1000 && !this.clockDead()) this.sampleClock()
   }
 
   private makeSynth(): void {
@@ -122,7 +178,7 @@ export class AudioEngine {
 
   /** Läuft der AudioContext gerade? */
   get running(): boolean {
-    return this.unlocked && !this.stale && this.rawCtx.state === 'running'
+    return this.unlocked && !this.stale && this.rawCtx.state === 'running' && !this.clockDead()
   }
 
   /** Audio ist entsperrt, läuft aber nicht (mehr): ein Tippen ist nötig */
@@ -141,6 +197,7 @@ export class AudioEngine {
     this.makeSynth()
     this.makeSampler()
     this.bindContext()
+    this.sampleClock()
     try {
       oldSynth?.dispose()
       oldSampler?.dispose()
@@ -186,11 +243,14 @@ export class AudioEngine {
    */
   async resume(fromGesture = false): Promise<boolean> {
     if (!this.unlocked) return false
+    this.checkAlive()
     // Ein neuer Kontext darf nur aus einer Berührung heraus gestartet werden. Alles bis zum
     // resume()-Aufruf läuft deshalb synchron, ohne await.
     if (this.stale && fromGesture) {
+      this.engage()
       this.rebuild()
       this.stale = false
+      this.runPending()
     }
     if (!this.stale && this.rawCtx.state !== 'running') {
       try {
@@ -203,6 +263,7 @@ export class AudioEngine {
     } else if (!this.stale && fromGesture) {
       this.silentKick()
     }
+    if (!this.stale && this.rawCtx.state === 'running' && !this.clockMark) this.sampleClock()
     this.checkStatus()
     return this.running
   }
@@ -239,22 +300,44 @@ export class AudioEngine {
   private bindLifecycle(): void {
     if (this.lifecycleBound) return
     this.lifecycleBound = true
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        if (IS_IOS) this.stale = true
-        this.markInterrupted()
-        this.checkStatus()
+    const toBackground = () => {
+      if (IS_IOS) this.stale = true
+      this.markInterrupted()
+      this.release() // keine Wiedergabe-Anzeige im Hintergrund
+      try {
+        void this.rawCtx.suspend()
+      } catch {
+        /* nicht kritisch */
       }
+      this.checkStatus()
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) toBackground()
       else void this.resume()
     })
-    // Zurück aus dem Seiten-Cache (Safari): Zustand neu prüfen
+    // Auch ohne visibilitychange (kurzer Wechsel, Sperrbildschirm, Cache): Zustand neu prüfen
+    window.addEventListener('pagehide', toBackground)
+    document.addEventListener('freeze', toBackground)
     window.addEventListener('pageshow', () => void this.resume())
+    window.addEventListener('focus', () => void this.resume())
+    // Herzschlag: erkennt einen toten Kontext auch dann, wenn iOS kein Ereignis schickt
+    this.heartbeat = setInterval(() => {
+      if (!document.hidden) this.checkAlive()
+    }, 500)
     // iOS erlaubt resume() nur in einer Berührung (touchend/click, nicht pointerdown)
     const onGesture = () => {
+      this.checkAlive()
       if (this.needsTap) void this.resume(true)
     }
     window.addEventListener('touchend', onGesture, { capture: true, passive: true })
     window.addEventListener('click', onGesture, { capture: true, passive: true })
+  }
+
+  /** Ton, der gedrückt wurde, bevor der Kontext neu aufgebaut werden konnte: jetzt nachholen */
+  private runPending(): void {
+    const p = this.pendingPlay
+    this.pendingPlay = null
+    if (p && performance.now() - p.at < 1500) p.fn()
   }
 
   /**
@@ -319,7 +402,15 @@ export class AudioEngine {
    */
   play(note: string, duration = 1.2, velocity = 1, instrument?: Instrument): void {
     if (!this.unlocked) return
-    if (!this.running) void this.resume() // z. B. nach App-Wechsel, aus dem Tippen heraus
+    this.checkAlive()
+    if (!this.running) {
+      // z. B. Tippen mit pointerdown nach App-Wechsel: der Neuaufbau geschieht erst im touchend/click.
+      // Ton merken und dort nachholen, statt ihn auf einem toten Kontext zu verlieren.
+      this.pendingPlay = { fn: () => this.play(note, duration, velocity, instrument), at: performance.now() }
+      void this.resume()
+      return
+    }
+    this.engage(Math.max(3000, duration * 1000 + 1500))
     const t = Tone.immediate()
     const usePiano = this.sampler !== null && instrument !== 'synth'
     if (usePiano) this.sampler?.triggerAttackRelease(note, duration, t, velocity)
