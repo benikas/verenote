@@ -268,7 +268,57 @@ describe('Migration Version 2 → 3 (M3: Intervalle, Freies Training)', () => {
     expect(m.data.progress.done).toEqual(['1a', '2a'])
   })
 
-  it('Daten einer künftigen Version 4 werden nicht überschrieben', () => {
-    expect(migrate({ version: 4 }).status).toBe('newer')
+  it('Daten einer künftigen Version 5 werden nicht überschrieben', () => {
+    expect(migrate({ version: DATA_VERSION + 1 }).status).toBe('newer')
+  })
+})
+
+describe('Version 3 → 4 (Animationen, gesehene Einführungen)', () => {
+  const v3 = {
+    version: 3,
+    settings: { neutralize: false, tempo: 1.5, level: '2b', length: 20, doneThreshold: 0.9, free: { type: 'intervals', intervals: [0, 7] } },
+    progress: {
+      items: { 'E|C': { hits: 5, misses: 2 }, 'int:7:up': { hits: 3, misses: 1 } },
+      recent: { '1a': [true, false, true] },
+      rounds: [{ at: '2026-10-12T08:00:00.000Z', level: '2a', total: 10, correct: 7 }],
+      done: ['1a', '1b'],
+    },
+    backup: { roundsSinceExport: 2, remindAt: 5 },
+  }
+
+  it('Alles Bestehende bleibt, neue Felder bekommen Standardwerte', () => {
+    const m = migrate(v3)
+    expect(m.status).toBe('migrated')
+    expect(m.data.version).toBe(DATA_VERSION)
+    expect(m.data.settings.animations).toBe(true)
+    expect(m.data.seen).toEqual([])
+    expect(m.data.settings).toMatchObject({ neutralize: false, tempo: 1.5, level: '2b', length: 20, doneThreshold: 0.9 })
+    expect(m.data.settings.free).toMatchObject({ type: 'intervals', intervals: [0, 7] })
+    expect(m.data.progress).toEqual({
+      items: v3.progress.items,
+      recent: v3.progress.recent,
+      rounds: v3.progress.rounds,
+      done: ['1a', '1b'],
+    })
+    expect(m.data.backup).toEqual({ roundsSinceExport: 2, remindAt: 5 })
+  })
+
+  it('Animationen aus und gesehene Einführungen bleiben erhalten, Kaputtes fällt weg', () => {
+    const m = migrate({ ...v3, version: 4, settings: { ...v3.settings, animations: false }, seen: ['stufe-1a', 'stufe-1a', 7, '', 'stufe-2c'] })
+    expect(m.status).toBe('ok')
+    expect(m.data.settings.animations).toBe(false)
+    expect(m.data.seen).toEqual(['stufe-1a', 'stufe-2c'])
+    expect(migrate({ version: 4, settings: { animations: 'ja' }, seen: 'x' }).data).toMatchObject({ seen: [], settings: { animations: true } })
+  })
+
+  it('Schreiben und Lesen verlustfrei', async () => {
+    const store = memoryStore()
+    const data = emptyData()
+    data.settings.animations = false
+    data.seen = ['stufe-1a']
+    await saveData(store, data)
+    const loaded = await loadData(store)
+    expect(loaded.status).toBe('ok')
+    expect(loaded.data).toEqual(data)
   })
 })

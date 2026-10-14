@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Burst from './Burst.svelte'
+  import { prefersReducedMotion, rewardEnabled } from './reward'
+  import { settings } from './data.svelte'
   import type { SessionSummary } from '../exercise/session'
   import { getLevel, type LevelId } from '../theory/tasks'
 
@@ -28,12 +31,15 @@
   /** Grundtöne: alle Töne der Stufe (auch „nicht gefragt“). Intervalle: nur die gefragten */
   const rows = $derived(isNotes ? summary.perItem : summary.perItem.filter((r) => r.attempts > 0))
   const weak = $derived(summary.perItem.filter((r) => r.attempts > r.correct))
+  /** Belohnung am Rundenende: mittel, bei „Stufe geschafft“ gross; aus, wenn abgeschaltet oder Bewegung reduziert */
+  const showBurst = rewardEnabled(settings.animations, prefersReducedMotion())
   const title = $derived(
     summary.level ? `Stufe ${summary.level} · ${getLevel(summary.level).label}` : 'Freies Training',
   )
 </script>
 
 <main class="sum" data-area={summary.practice.type}>
+  {#if showBurst}<Burst size={achieved.length > 0 ? 'big' : 'medium'} y="26%" />{/if}
   <h1>Ergebnis</h1>
   <p class="where">{title}</p>
 

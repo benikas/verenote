@@ -6,7 +6,7 @@ import { LEVELS, type LevelId } from '../theory/tasks'
  * Datenformat der gespeicherten Daten (rein, ohne Browser-API).
  * Versioniert: Jede Änderung am Format erhöht DATA_VERSION und bekommt einen Migrationsschritt.
  */
-export const DATA_VERSION = 3
+export const DATA_VERSION = 4
 
 /** Wie viele letzte Versuche pro Stufe für die Freischaltung zählen */
 export const RECENT_ATTEMPTS = 20
@@ -57,6 +57,8 @@ export interface PersistedSettings extends Settings {
   doneThreshold: number
   /** Freies Training (ab Version 3) */
   free: FreeSettings
+  /** Belohnungs-Animationen an/aus (ab Version 4) */
+  animations: boolean
 }
 
 export const ROUND_LENGTHS = [10, 15, 20] as const
@@ -101,6 +103,8 @@ export interface AppData {
   settings: PersistedSettings
   progress: Progress
   backup: Backup
+  /** Schon gesehene Einführungen (Ids wie "stufe-1a"), ab Version 4 */
+  seen: string[]
 }
 
 export const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
@@ -109,6 +113,7 @@ export const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   length: 15,
   doneThreshold: DEFAULT_DONE_THRESHOLD,
   free: DEFAULT_FREE_SETTINGS,
+  animations: true,
 }
 
 export function emptyProgress(): Progress {
@@ -125,6 +130,7 @@ export function emptyData(): AppData {
     settings: cleanSettings(undefined),
     progress: emptyProgress(),
     backup: emptyBackup(),
+    seen: [],
   }
 }
 
@@ -179,6 +185,8 @@ function cleanSettings(raw: unknown): PersistedSettings {
     doneThreshold: num(raw.doneThreshold ?? raw.unlockThreshold, d.doneThreshold, 0.5, 1),
     // Version 3: Freies Training. Ältere Daten haben das Feld nicht und bekommen die Standardwerte.
     free: cleanFree(raw.free),
+    // Version 4: Animationen. Ältere Daten: an.
+    animations: typeof raw.animations === 'boolean' ? raw.animations : d.animations,
   }
 }
 
@@ -235,6 +243,14 @@ function doneFromV1(raw: Record<string, unknown>, progress: Progress, threshold:
   return LEVELS.map((l) => l.id).filter((id) => done.has(id))
 }
 
+/** Gesehene Einführungen: nur Texte, höchstens 100, ohne Doppelte, Reihenfolge bleibt */
+export function cleanSeen(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const v of raw) if (typeof v === 'string' && v.length > 0 && v.length <= 40 && !out.includes(v)) out.push(v)
+  return out.slice(0, 100)
+}
+
 function cleanBackup(raw: unknown): Backup {
   const d = emptyBackup()
   if (!isObject(raw)) return d
@@ -271,12 +287,14 @@ export function migrate(raw: unknown): Migration {
   if (raw.version < 2) progress.done = doneFromV1(raw.progress && isObject(raw.progress) ? raw.progress : {}, progress, settings.doneThreshold)
   // Version 2 → 3: Neue Felder (settings.free), neue Stufen 2a–2f, Item-Schlüssel "int:…" und
   // Runden des Freien Trainings. Es ist nichts umzurechnen, alles Bestehende bleibt unverändert.
+  // Version 3 → 4: Neue Felder settings.animations (Standard an) und seen (Standard leer).
   // Hier kommen künftig weitere Schritte "von Version n auf n+1" hinzu.
   const data: AppData = {
     version: DATA_VERSION,
     settings,
     progress,
     backup: cleanBackup(raw.backup),
+    seen: cleanSeen(raw.seen),
   }
   return { data, status: raw.version === DATA_VERSION ? 'ok' : 'migrated' }
 }

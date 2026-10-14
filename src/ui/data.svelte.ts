@@ -17,6 +17,8 @@ import { idbStore, loadData, saveData, type Loaded, type KeyValueStore } from '.
 export const settings: PersistedSettings = $state(emptyData().settings)
 export const progress: Progress = $state(emptyProgress())
 export const backup: Backup = $state(emptyBackup())
+/** Schon gesehene Einführungen */
+export const seen: { ids: string[] } = $state({ ids: [] })
 
 export const storageState = $state({
   ready: false,
@@ -37,10 +39,11 @@ export function applyData(data: AppData): void {
   progress.rounds = p.rounds
   progress.done = p.done
   Object.assign(backup, data.backup)
+  seen.ids = [...data.seen]
 }
 
 export function snapshot(): AppData {
-  return $state.snapshot({ version: DATA_VERSION, settings, progress, backup }) as AppData
+  return $state.snapshot({ version: DATA_VERSION, settings, progress, backup, seen: seen.ids }) as AppData
 }
 
 export async function initData(useStore: KeyValueStore = idbStore): Promise<void> {

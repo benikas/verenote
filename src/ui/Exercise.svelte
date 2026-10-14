@@ -18,6 +18,8 @@
   import { persistNow, progress, settings } from './data.svelte'
   import IntervalButtons from './IntervalButtons.svelte'
   import Keyboard from './Keyboard.svelte'
+  import Burst from './Burst.svelte'
+  import { prefersReducedMotion, rewardEnabled } from './reward'
 
   let {
     session,
@@ -41,6 +43,8 @@
   let manualNext = $state(false)
   let timer: ReturnType<typeof setTimeout> | undefined
   let introToken = 0
+  /** Zählt die kleinen Belohnungs-Animationen (neuer Wert = neue Animation) */
+  let burst = $state(0)
 
   const timing = $derived(taskTiming(settings.tempo))
   const isLast = $derived(answered >= session.length)
@@ -194,7 +198,10 @@
     void persistNow() // nach jeder Antwort sichern
     result = r
     answered = session.answered
-    if (r.correct) correct += 1
+    if (r.correct) {
+      correct += 1
+      if (rewardEnabled(settings.animations, prefersReducedMotion())) burst += 1
+    }
     marks = r.correct ? { [r.expected]: 'correct' } : { [r.given]: 'wrong', [r.expected]: 'correct' }
     phase = 'feedback'
     // Falsch: Lösung vorspielen, im Kontext des Referenztons (ohne Neutralisierung).
@@ -246,6 +253,10 @@
     </div>
     <span class="score" aria-label="Richtige Antworten">{correct} ✓</span>
   </header>
+
+  {#key burst}
+    {#if burst > 0}<Burst size="small" y="30%" />{/if}
+  {/key}
 
   <section class="stage">
     <p class="prompt" aria-live="polite">

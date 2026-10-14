@@ -105,6 +105,27 @@
     </div>
   </div>
 
+  <h2 class="section">Darstellung</h2>
+  <div class="card">
+    <div class="row">
+      <div class="text">
+        <span class="name">Belohnungs-Animationen</span>
+        <span class="desc">Kleine Sterne bei richtigen Antworten und am Rundenende. Aus, wenn das Gerät „Bewegung reduzieren“ meldet</span>
+      </div>
+      <button
+        class="switch"
+        class:on={settings.animations}
+        role="switch"
+        aria-checked={settings.animations}
+        aria-label="Belohnungs-Animationen"
+        onclick={() => {
+          settings.animations = !settings.animations
+          persistSoon()
+        }}><span class="knob"></span></button
+      >
+    </div>
+  </div>
+
   <h2 class="section">Tempo</h2>
   <div class="card">
     <div class="row">

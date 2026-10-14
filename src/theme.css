@@ -43,6 +43,11 @@
   --key-black-ink: #fdf6ec;
   --key-pressed: #ffd9bd;
 
+  /* Belohnungs-Animation (Punkte und Sterne, nur Dekoration) */
+  --burst-1: #c2410c;
+  --burst-2: #f5a524;
+  --burst-3: #15803d;
+
   /* Form */
   --radius-s: 10px;
   --radius-m: 14px;
@@ -65,4 +70,5 @@
   --accent-soft: #d3f1ec;
   --accent-soft-ink: #134e4a;
   --key-pressed: #bfece5;
+  --burst-1: #0f766e;
 }
