@@ -176,6 +176,8 @@
   .black.wrong {
     background: var(--bad);
     color: var(--bad-ink);
+    /* auch ohne Rot/Grün erkennbar: heller Innenring (PL, Farbschwäche) */
+    box-shadow: inset 0 0 0 4px var(--bad-ink);
   }
   .black.correct .blabel,
   .black.wrong .blabel {

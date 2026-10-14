@@ -19,6 +19,14 @@ describe('Sterne im Lernpfad (4.5)', () => {
     expect(levelMark(p, '1a')).toBe('begonnen')
   })
 
+  it('Stern 2 verlangt mindestens 5 Versuche (PL, 14.10.)', () => {
+    const p = emptyProgress()
+    p.recent['1a'] = attempts(4, 0) // 100 %, aber nur 4 Versuche
+    p.recent['1b'] = attempts(5, 0)
+    p.recent['1c'] = attempts(2, 3) // 5 Versuche, 40 %
+    expect([levelStars(p, '1a'), levelStars(p, '1b'), levelStars(p, '1c')]).toEqual([1, 2, 1])
+  })
+
   it('3 Sterne = geschafft, bleibt auch wenn die Quote später sinkt', () => {
     const p = emptyProgress()
     p.recent['1a'] = attempts(18, 2) // 90 % über 20
