@@ -1,14 +1,19 @@
+// @ts-ignore Node-Modul nur im Test, @types/node ist nicht installiert
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 /** 4.1: Alle Farben stehen in theme.css; Text auf Hintergrund mindestens 4,5 : 1 (WCAG AA). */
-const css = readFileSync(new URL('./theme.css', import.meta.url), 'utf8')
+
+const css: string = readFileSync(new URL('./theme.css', import.meta.url), 'utf8')
 
 function block(selector: string): Record<string, string> {
-  const i = css.indexOf(selector + ' {')
+  const i = css.indexOf(selector)
   const body = css.slice(i, css.indexOf('}', i))
   const out: Record<string, string> = {}
-  for (const m of body.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) out[m[1]] = m[2]
+  for (const m of body.matchAll(/(--[\w-]+):\s*#([0-9a-fA-F]{3,6})\s*[;}]?/g)) {
+    const h = m[2].length === 3 ? [...m[2]].map((c) => c + c).join('') : m[2]
+    out[m[1]] = '#' + h
+  }
   return out
 }
 
@@ -25,7 +30,7 @@ function ratio(a: string, b: string) {
 const base = block(':root')
 const areas: Record<string, Record<string, string>> = {
   notes: base,
-  intervals: { ...base, ...block("[data-area='intervals']") },
+  intervals: { ...base, ...block('[data-area=') },
 }
 
 // [Vordergrund, Hintergrund]
@@ -66,14 +71,12 @@ describe('Kontraste (Text mind. 4,5 : 1)', () => {
 })
 
 describe('Farben nur an einer Stelle', () => {
-  it('Screens enthalten keine eigenen Farbwerte', async () => {
-    const { readdirSync } = await import('node:fs')
-    const dir = new URL('./ui/', import.meta.url)
-    const bad: string[] = []
-    for (const f of readdirSync(dir).filter((n) => n.endsWith('.svelte'))) {
-      const src = readFileSync(new URL(f, dir), 'utf8')
-      if (/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(src.split('<style>')[1] ?? '')) bad.push(f)
-    }
+  it('Screens enthalten keine eigenen Farbwerte', () => {
+    const files = import.meta.glob('./ui/*.svelte', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+    const bad = Object.entries(files)
+      .filter(([, src]) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(src.split('<style>')[1] ?? ''))
+      .map(([name]) => name)
+    expect(Object.keys(files).length).toBeGreaterThan(5)
     expect(bad).toEqual([])
   })
 })
