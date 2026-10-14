@@ -43,6 +43,10 @@
   --key-black-ink: #fdf6ec;
   --key-pressed: #ffd9bd;
 
+  /* Sterne im Lernpfad */
+  --star: #d97706;
+  --star-off: #d6ccdc;
+
   /* Belohnungs-Animation (Punkte und Sterne, nur Dekoration) */
   --burst-1: #c2410c;
   --burst-2: #f5a524;

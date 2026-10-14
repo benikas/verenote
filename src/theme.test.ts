@@ -58,6 +58,9 @@ const PAIRS: [string, string][] = [
   ['--text', '--accent-soft'],
 ]
 
+// Grafische Elemente (Sterne): mindestens 3 : 1 auf weissen Karten
+const GRAPHIC: [string, string][] = [['--star', '--surface']]
+
 describe('Kontraste (Text mind. 4,5 : 1)', () => {
   for (const [area, vars] of Object.entries(areas)) {
     for (const [fg, bg] of PAIRS) {
@@ -67,6 +70,14 @@ describe('Kontraste (Text mind. 4,5 : 1)', () => {
         expect(ratio(vars[fg], vars[bg])).toBeGreaterThanOrEqual(4.5)
       })
     }
+  }
+})
+
+describe('Kontraste grafischer Elemente (mind. 3 : 1)', () => {
+  for (const [fg, bg] of GRAPHIC) {
+    it(`${fg} auf ${bg}`, () => {
+      expect(ratio(base[fg], base[bg])).toBeGreaterThanOrEqual(3)
+    })
   }
 })
 

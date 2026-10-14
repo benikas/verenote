@@ -1,6 +1,6 @@
 <script lang="ts">
   import { recentStat } from '../progress/progress'
-  import { MARK_LABEL, levelMark } from '../progress/marks'
+  import { MARK_LABEL, levelMark, levelStars } from '../progress/marks'
   import { RECENT_ATTEMPTS, ROUND_LENGTHS } from '../storage/schema'
   import { LEVELS, type LevelId } from '../theory/tasks'
   import { persistSoon, progress, settings } from './data.svelte'
@@ -55,23 +55,29 @@
       {@const mark = levelMark(progress, l.id)}
       {@const st = recentStat(progress, l.id)}
       {@const selected = level === l.id}
-      <button class="level" data-area={l.kind} class:selected role="radio" aria-checked={selected} onclick={() => setLevel(l.id)}>
-        <span class="line">
-          <span class="id">{l.id}</span>
-          <span class="name">{l.label}</span>
-          <span class="badge {mark}">{mark === 'geschafft' ? '✓ ' : ''}{MARK_LABEL[mark]}</span>
-          <span class="quote">{st.attempts > 0 ? pct(st.accuracy) : ''}</span>
-        </span>
-        {#if selected}
-          <span class="desc">{DESCRIPTIONS[l.id]}</span>
-          <span class="desc">
-            {#if st.attempts > 0}
-              Letzte {st.attempts} {st.attempts === 1 ? 'Versuch' : 'Versuche'}: {pct(st.accuracy)} richtig.
-            {/if}
-            {#if mark !== 'geschafft'}Geschafft ab {pct(settings.doneThreshold)} über {RECENT_ATTEMPTS} Versuche.{/if}
+      {@const stars = levelStars(progress, l.id)}
+      <div class="step" data-area={l.kind} class:last={i === LEVELS.length - 1 || LEVELS[i + 1].kind !== l.kind}>
+        <div class="rail"><span class="node" class:done={mark === 'geschafft'}>{l.id}</span></div>
+        <button class="level" class:selected role="radio" aria-checked={selected} onclick={() => setLevel(l.id)}>
+          <span class="line">
+            <span class="name">{l.label}</span>
+            <span class="badge {mark}">{mark === 'geschafft' ? '✓ ' : ''}{MARK_LABEL[mark]}</span>
+            <span class="quote">{st.attempts > 0 ? pct(st.accuracy) : ''}</span>
           </span>
-        {/if}
-      </button>
+          <span class="stars" role="img" aria-label="{stars} von 3 Sternen">
+            {#each [1, 2, 3] as n (n)}<span class="star" class:on={n <= stars}>★</span>{/each}
+          </span>
+          {#if selected}
+            <span class="desc">{DESCRIPTIONS[l.id]}</span>
+            <span class="desc">
+              {#if st.attempts > 0}
+                Letzte {st.attempts} {st.attempts === 1 ? 'Versuch' : 'Versuche'}: {pct(st.accuracy)} richtig.
+              {/if}
+              {#if mark !== 'geschafft'}Geschafft ab {pct(settings.doneThreshold)} über {RECENT_ATTEMPTS} Versuche.{/if}
+            </span>
+          {/if}
+        </button>
+      </div>
     {/each}
   </div>
 
@@ -112,18 +118,65 @@
   }
   .line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 4px 10px;
     min-height: 30px;
   }
-  .id {
-    flex: none;
+  .step {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+  }
+  /* Weg: Linie von Stufe zu Stufe, am Ende der Gruppe nicht weiter */
+  .step:not(.last) .rail::before {
+    content: '';
+    position: absolute;
+    top: 40px;
+    bottom: -8px;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--accent-soft);
+  }
+  .node {
+    position: relative;
+    z-index: 1;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent-soft-ink);
+    border: 2px solid var(--accent);
+    font-size: 0.85rem;
     font-weight: 700;
-    color: var(--accent);
-    min-width: 1.6em;
+  }
+  .node.done {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .stars {
+    display: flex;
+    gap: 2px;
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+  .star {
+    color: var(--star-off);
+  }
+  .star.on {
+    color: var(--star);
   }
   .name {
-    flex: 1;
+    flex: 1 1 9.5em;
     min-width: 0;
     font-weight: 600;
     line-height: 1.25;
@@ -157,7 +210,6 @@
     font-size: 0.85rem;
     color: var(--muted);
     line-height: 1.35;
-    padding-left: calc(1.6em + 10px);
   }
   .go {
     position: sticky;

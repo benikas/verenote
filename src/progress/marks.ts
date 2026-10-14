@@ -20,6 +20,23 @@ export function levelMark(progress: Progress, level: LevelId): Mark {
   return recentStat(progress, level).attempts > 0 ? 'begonnen' : 'neu'
 }
 
+/** Ab dieser Quote (letzte Versuche) zeigt eine begonnene Stufe 2 statt 1 Stern */
+export const STARS_TWO_THRESHOLD = 0.6
+
+export type Stars = 0 | 1 | 2 | 3
+
+/**
+ * Sterne im Lernpfad (M4, 4.5). Folgen der Markierung, ändern keine Regel:
+ * 0 = neu · 1 = begonnen, Quote unter 60 % · 2 = begonnen, Quote ab 60 % · 3 = geschafft.
+ * Wer „geschafft“ ist, behält 3 Sterne, auch wenn die Quote später sinkt.
+ */
+export function levelStars(progress: Progress, level: LevelId): Stars {
+  const mark = levelMark(progress, level)
+  if (mark === 'geschafft') return 3
+  if (mark === 'neu') return 0
+  return recentStat(progress, level).accuracy >= STARS_TWO_THRESHOLD ? 2 : 1
+}
+
 /** Erfüllen die letzten Versuche der Stufe die Bedingung für „geschafft“? */
 export function meetsDoneRule(progress: Progress, level: LevelId, threshold: number): boolean {
   const s = recentStat(progress, level)
