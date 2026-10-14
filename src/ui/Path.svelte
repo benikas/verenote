@@ -50,12 +50,12 @@
   <div class="levels" role="radiogroup" aria-label="Stufe">
     {#each LEVELS as l, i (l.id)}
       {#if i === 0 || LEVELS[i - 1].kind !== l.kind}
-        <h2 class="section">{l.kind === 'notes' ? 'Grundtöne' : 'Intervalle'}</h2>
+        <h2 class="section" data-area={l.kind}>{l.kind === 'notes' ? 'Grundtöne' : 'Intervalle'}</h2>
       {/if}
       {@const mark = levelMark(progress, l.id)}
       {@const st = recentStat(progress, l.id)}
       {@const selected = level === l.id}
-      <button class="level" class:selected role="radio" aria-checked={selected} onclick={() => setLevel(l.id)}>
+      <button class="level" data-area={l.kind} class:selected role="radio" aria-checked={selected} onclick={() => setLevel(l.id)}>
         <span class="line">
           <span class="id">{l.id}</span>
           <span class="name">{l.label}</span>
@@ -101,13 +101,14 @@
     text-align: left;
     min-height: 52px;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 2px solid transparent;
     border-radius: 14px;
     padding: 10px 14px;
   }
   .level.selected {
     border-color: var(--accent);
-    background: #1d2742;
+    background: var(--accent-soft);
   }
   .line {
     display: flex;
@@ -137,12 +138,12 @@
     font-weight: 700;
   }
   .badge.begonnen {
-    background: #3b3015;
-    color: #ffe9a8;
+    background: var(--warn-soft);
+    color: var(--warn-soft-ink);
   }
   .badge.geschafft {
-    background: #12372a;
-    color: #c9f5de;
+    background: var(--good-soft);
+    color: var(--good-soft-ink);
   }
   .quote {
     flex: none;

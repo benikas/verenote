@@ -133,6 +133,7 @@
   }
   .back {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 0;
     border-radius: 12px;
     width: 44px;
@@ -151,6 +152,7 @@
     margin: 0;
     padding: 0;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     display: flex;
     flex-direction: column;
@@ -212,6 +214,7 @@
     gap: 6px;
     align-items: flex-end;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 14px 10px 10px;
     overflow-x: auto;

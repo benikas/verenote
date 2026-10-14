@@ -169,6 +169,7 @@
 <style>
   .card {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 6px 16px;
     display: flex;
@@ -215,7 +216,7 @@
     font-size: 0.9rem;
   }
   .try:active {
-    background: var(--accent);
+    background: var(--accent-soft);
   }
   input[type='range'] {
     width: 100%;
@@ -237,6 +238,7 @@
     text-align: left;
     min-height: 56px;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 0;
     border-radius: 14px;
     padding: 12px 16px;
@@ -259,11 +261,12 @@
     font-size: 1rem;
   }
   .danger {
-    background: #4a2020 !important;
-    color: #ffd7d7;
+    background: var(--bad-soft) !important;
+    color: var(--bad-soft-ink);
   }
   .confirm {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 14px 16px;
     line-height: 1.45;
@@ -282,19 +285,19 @@
     margin: 0;
     padding: 10px 12px;
     border-radius: 12px;
-    background: #3b3015;
-    color: #ffe9a8;
+    background: var(--warn-soft);
+    color: var(--warn-soft-ink);
     font-size: 0.9rem;
   }
   .msg {
     margin: 0;
     padding: 10px 12px;
     border-radius: 12px;
-    background: #12372a;
-    color: #c9f5de;
+    background: var(--good-soft);
+    color: var(--good-soft-ink);
   }
   .msg.error {
-    background: #4a2020;
-    color: #ffd7d7;
+    background: var(--bad-soft);
+    color: var(--bad-soft-ink);
   }
 </style>

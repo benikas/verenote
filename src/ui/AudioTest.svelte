@@ -140,7 +140,7 @@
     font-size: 1.1rem;
   }
   button:active {
-    background: var(--accent);
+    background: var(--accent-soft);
   }
   .wide {
     width: 100%;
@@ -159,7 +159,8 @@
     padding: 14px 0;
   }
   .grid .black {
-    background: #151b2e;
+    background: var(--key-black);
+    color: var(--key-black-ink);
   }
   .grid .active {
     outline: 2px solid var(--accent);
@@ -172,6 +173,7 @@
     justify-content: center;
     gap: 2px;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 10px;
     text-align: center;

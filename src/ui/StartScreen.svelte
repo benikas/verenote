@@ -71,7 +71,7 @@
     padding: 22px;
     font-size: 1.4rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--accent-ink);
   }
   .go:active {
     filter: brightness(0.9);
@@ -105,6 +105,7 @@
     font-size: 0.85rem;
     color: var(--muted);
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 12px;
     padding: 12px 14px;
     margin: 0;

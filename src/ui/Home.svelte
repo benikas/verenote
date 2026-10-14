@@ -88,6 +88,7 @@
     gap: 4px;
     text-align: left;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 2px solid transparent;
     border-radius: 18px;
     padding: 16px 20px;
@@ -98,7 +99,7 @@
   .tile.primary {
     min-height: 104px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-ink);
   }
   .tile.primary:active {
     filter: brightness(0.9);
@@ -114,7 +115,7 @@
     line-height: 1.3;
   }
   .primary .sub {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--accent-ink);
   }
   .remind {
     display: flex;
@@ -122,8 +123,8 @@
     gap: 10px;
     padding: 12px 14px;
     border-radius: 12px;
-    background: #3b3015;
-    color: #ffe9a8;
+    background: var(--warn-soft);
+    color: var(--warn-soft-ink);
     font-size: 0.9rem;
     line-height: 1.4;
   }
@@ -133,7 +134,8 @@
   }
   .remind-actions button {
     min-height: 44px;
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--surface);
+    box-shadow: var(--shadow);
     border: 0;
     border-radius: 10px;
     padding: 10px 14px;

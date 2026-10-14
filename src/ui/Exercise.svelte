@@ -232,7 +232,7 @@
   }
 </script>
 
-<main class="ex" data-phase={phase}
+<main class="ex" data-phase={phase} data-area={session.practice.type}
   data-task={task?.kind === 'notes' ? task.target : task ? String(task.semitones) : undefined}
   data-second={task?.kind === 'intervals' ? task.second : undefined}
   data-start={task?.kind === 'intervals' ? task.start : undefined}
@@ -318,6 +318,7 @@
   }
   .close {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 0;
     border-radius: 12px;
     width: 44px;
@@ -399,7 +400,7 @@
     font-size: 1rem;
   }
   .actions button:active {
-    background: var(--accent);
+    background: var(--accent-soft);
   }
   .actions button:disabled {
     opacity: 0.4;
@@ -407,7 +408,7 @@
   .next {
     min-height: 56px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-ink);
     border: 0;
     border-radius: 16px;
     padding: 14px;

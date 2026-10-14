@@ -28,7 +28,7 @@
   const lines = (name: string) => name.split(' ')
 </script>
 
-<main class="free">
+<main class="free" data-area={free.type}>
   <header>
     <button class="back" aria-label="Zurück" onclick={onback}>←</button>
     <h1>Freies Training</h1>
@@ -246,6 +246,7 @@
   }
   .back {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 0;
     border-radius: 12px;
     width: 44px;
@@ -275,6 +276,7 @@
     flex: 1;
     min-height: 48px;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border: 2px solid transparent;
     border-radius: 12px;
     padding: 8px 4px;
@@ -287,7 +289,7 @@
   }
   .chip.selected {
     border-color: var(--accent);
-    background: #1d2742;
+    background: var(--accent-soft);
   }
   .chip:disabled {
     opacity: 0.6;
@@ -310,6 +312,7 @@
     justify-content: space-between;
     gap: 12px;
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 12px 16px;
   }
@@ -341,7 +344,7 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--surface);
     transition: transform 0.15s;
   }
   .switch.on .knob {
@@ -351,14 +354,14 @@
     margin: 0;
     padding: 10px 12px;
     border-radius: 10px;
-    background: #3b3015;
-    color: #ffe9a8;
+    background: var(--warn-soft);
+    color: var(--warn-soft-ink);
     font-size: 0.9rem;
   }
   .go {
     margin-top: 12px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-ink);
     border: 0;
     border-radius: 16px;
     padding: 20px;

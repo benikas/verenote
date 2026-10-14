@@ -33,7 +33,7 @@
   )
 </script>
 
-<main class="sum">
+<main class="sum" data-area={summary.practice.type}>
   <h1>Ergebnis</h1>
   <p class="where">{title}</p>
 
@@ -108,6 +108,7 @@
   }
   .big {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 18px;
     padding: 24px;
     display: flex;
@@ -140,6 +141,7 @@
   }
   li {
     background: var(--surface);
+    box-shadow: var(--shadow);
     border-radius: 12px;
     padding: 10px 12px;
     display: flex;
@@ -171,7 +173,7 @@
   }
   .go {
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-ink);
     border: 0;
     border-radius: 16px;
     padding: 18px;
@@ -190,8 +192,8 @@
     margin: 0;
     padding: 12px 14px;
     border-radius: 12px;
-    background: #12372a;
-    color: #c9f5de;
+    background: var(--good-soft);
+    color: var(--good-soft-ink);
     line-height: 1.4;
   }
 </style>

@@ -159,7 +159,7 @@
     gap: 8px;
     border: 0;
     border-radius: 0;
-    background: rgba(8, 12, 22, 0.88);
+    background: var(--overlay);
     color: var(--text);
     /* erscheint leicht verzögert, damit ein sofortiges automatisches Fortsetzen nicht aufblitzt */
     opacity: 0;
