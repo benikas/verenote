@@ -3,12 +3,18 @@
   import { MARK_LABEL, levelMark, levelStars } from '../progress/marks'
   import { RECENT_ATTEMPTS, ROUND_LENGTHS } from '../storage/schema'
   import { LEVELS, type LevelId } from '../theory/tasks'
-  import { persistSoon, progress, settings } from './data.svelte'
+  import { introId } from '../content/inhalte'
+  import { markSeen, persistSoon, progress, settings } from './data.svelte'
+
+  import Intro from './Intro.svelte'
 
   let {
     onback,
     onstart,
   }: { onback: () => void; onstart: (level: LevelId, length: number) => void } = $props()
+
+  /** Einführung einer Stufe über dem Lernpfad ansehen („?“) */
+  let helpFor = $state<LevelId | null>(null)
 
   const DESCRIPTIONS: Record<LevelId, string> = {
     '1a': 'Nur drei Töne, gut zu unterscheiden. Der beste Einstieg.',
@@ -56,7 +62,7 @@
       {@const st = recentStat(progress, l.id)}
       {@const selected = level === l.id}
       {@const stars = levelStars(progress, l.id)}
-      <div class="step" data-area={l.kind} class:last={i === LEVELS.length - 1 || LEVELS[i + 1].kind !== l.kind}>
+      <div class="step" data-area={l.kind} class:selected class:last={i === LEVELS.length - 1 || LEVELS[i + 1].kind !== l.kind}>
         <div class="rail"><span class="node" class:done={mark === 'geschafft'}>{l.id}</span></div>
         <button class="level" class:selected role="radio" aria-checked={selected} onclick={() => setLevel(l.id)}>
           <span class="line">
@@ -77,6 +83,9 @@
             </span>
           {/if}
         </button>
+        {#if selected}
+          <button class="intro-btn" onclick={() => (helpFor = l.id)}><span class="q" aria-hidden="true">?</span> Einführung zu Stufe {l.id}</button>
+        {/if}
       </div>
     {/each}
   </div>
@@ -90,6 +99,10 @@
 
   <button class="btn-primary go" onclick={() => onstart(level, settings.length)}>Runde starten · Stufe {level}</button>
 </main>
+
+{#if helpFor}
+  <Intro level={helpFor} onclose={() => { markSeen(introId(helpFor!)); helpFor = null }} overlay />
+{/if}
 
 <style>
   .levels {
@@ -127,6 +140,9 @@
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr);
     gap: 10px;
+  }
+  .step.selected .rail {
+    grid-row: 1 / 3;
   }
   .rail {
     position: relative;
@@ -210,6 +226,30 @@
     font-size: 0.85rem;
     color: var(--muted);
     line-height: 1.35;
+  }
+  .intro-btn {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 14px;
+    background: transparent;
+    border: 0;
+    color: var(--accent);
+    font-size: 0.95rem;
+    text-align: left;
+  }
+  .q {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    font-weight: 600;
+    font-size: 0.85rem;
   }
   .go {
     position: sticky;

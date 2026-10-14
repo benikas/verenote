@@ -19,6 +19,7 @@
   import IntervalButtons from './IntervalButtons.svelte'
   import Keyboard from './Keyboard.svelte'
   import Burst from './Burst.svelte'
+  import Intro from './Intro.svelte'
   import { prefersReducedMotion, rewardEnabled } from './reward'
 
   let {
@@ -87,6 +88,22 @@
     else if (phase === 'listening' || phase === 'answering') pending = 'task'
     else if (result?.correct) pending = manualNext ? null : 'next'
     else pending = 'solution'
+  }
+
+  /** „?“: Einführung der Stufe über der Übung. Die Runde pausiert und zählt keinen Versuch. */
+  let helpOpen = $state(false)
+
+  function openHelp() {
+    if (!session.level || helpOpen) return
+    audio.stop()
+    handleInterrupt() // merkt sich, was nachzuholen ist
+    helpOpen = true
+  }
+
+  function closeHelp() {
+    audio.stop()
+    helpOpen = false
+    handleResume()
   }
 
   function handleResume() {
@@ -251,6 +268,9 @@
       <span>Aufgabe {Math.min(answered + (phase === 'feedback' ? 0 : 1), session.length)} von {session.length}</span>
       <div class="bar"><div class="fill" style:width="{(answered / session.length) * 100}%"></div></div>
     </div>
+    {#if session.level}
+      <button class="help" aria-label="Einführung zu dieser Stufe" onclick={openHelp}>?</button>
+    {/if}
     <span class="score" aria-label="Richtige Antworten">{correct} ✓</span>
   </header>
 
@@ -311,6 +331,10 @@
   {/if}
 </main>
 
+{#if helpOpen && session.level}
+  <Intro level={session.level} onclose={closeHelp} overlay />
+{/if}
+
 <style>
   .ex {
     flex: 1;
@@ -336,6 +360,18 @@
     height: 44px;
     font-size: 1rem;
     color: var(--muted);
+  }
+  .help {
+    flex: none;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    border: 0;
+    border-radius: 12px;
+    width: 44px;
+    height: 44px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent);
   }
   .count {
     flex: 1;

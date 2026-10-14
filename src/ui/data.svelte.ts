@@ -20,6 +20,15 @@ export const backup: Backup = $state(emptyBackup())
 /** Schon gesehene Einführungen */
 export const seen: { ids: string[] } = $state({ ids: [] })
 
+export const isSeen = (id: string) => seen.ids.includes(id)
+
+/** Einführung als gesehen merken und sichern */
+export function markSeen(id: string): void {
+  if (isSeen(id)) return
+  seen.ids = [...seen.ids, id]
+  void persistNow()
+}
+
 export const storageState = $state({
   ready: false,
   /** Wird gespeichert? Nein, wenn IndexedDB fehlt oder die Daten von einer neueren Version stammen */

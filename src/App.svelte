@@ -6,19 +6,21 @@
   import { updateDone } from './progress/marks'
   import { noteRound } from './storage/backup'
   import { freePractice } from './theory/practice'
+  import { introId } from './content/inhalte'
   import { nextLevel, type LevelId } from './theory/tasks'
   import AudioTest from './ui/AudioTest.svelte'
-  import { backup, initData, persistNow, persistSoon, progress, settings } from './ui/data.svelte'
+  import { backup, initData, isSeen, markSeen, persistNow, persistSoon, progress, settings } from './ui/data.svelte'
   import Exercise from './ui/Exercise.svelte'
   import FreeTraining from './ui/FreeTraining.svelte'
   import Home from './ui/Home.svelte'
+  import Intro from './ui/Intro.svelte'
   import Path from './ui/Path.svelte'
   import Settings from './ui/Settings.svelte'
   import StartScreen from './ui/StartScreen.svelte'
   import Stats from './ui/Stats.svelte'
   import Summary from './ui/Summary.svelte'
 
-  type Screen = 'start' | 'home' | 'path' | 'free' | 'exercise' | 'summary' | 'test' | 'stats' | 'settings'
+  type Screen = 'start' | 'home' | 'path' | 'free' | 'intro' | 'exercise' | 'summary' | 'test' | 'stats' | 'settings'
 
   let screen = $state<Screen>('start')
   let load = $state<LoadState>(audio.loadState)
@@ -67,6 +69,12 @@
     session = new Session({ level, length, history })
     summary = null
     achieved = []
+    // Erster Start dieser Stufe: erst die Einführung (4.8)
+    screen = isSeen(introId(level)) ? 'exercise' : 'intro'
+  }
+
+  function introDone() {
+    if (session?.level) markSeen(introId(session.level))
     screen = 'exercise'
   }
 
@@ -123,6 +131,8 @@
   <Settings onback={() => (screen = 'home')} ontest={() => (screen = 'test')} />
 {:else if screen === 'free'}
   <FreeTraining onback={() => (screen = 'home')} onstart={startFree} />
+{:else if screen === 'intro' && session?.level}
+  <Intro level={session.level} onclose={introDone} />
 {:else if screen === 'exercise' && session}
   <Exercise {session} onfinish={finish} onexit={exit} />
 {:else if screen === 'summary' && summary}
