@@ -108,11 +108,15 @@
     font: inherit;
   }
   .white {
+    position: relative;
     flex: 1;
     min-width: 0;
-    background: #f1f3f8;
-    color: #1b1e27;
-    border-radius: 0 0 10px 10px;
+    background: var(--key-white);
+    color: var(--key-white-ink);
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-m) var(--radius-m);
+    box-shadow: var(--shadow);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -125,22 +129,21 @@
     pointer-events: none;
   }
   .white:not(.off):not(.locked):active {
-    background: #c9d6ff;
+    background: var(--key-pressed);
   }
   .white.off {
-    background: #2a2f3a;
-    color: #5c6475;
+    background: var(--surface-off);
+    color: var(--disabled);
+    box-shadow: none;
   }
   .black {
     position: absolute;
     top: 0;
     height: 62%;
-    background: #0a0b0f;
-    border-radius: 0 0 8px 8px;
-    box-shadow: 0 0 0 2px var(--bg);
+    background: var(--key-black);
+    border-radius: 0 0 var(--radius-s) var(--radius-s);
+    box-shadow: 0 0 0 2px var(--bg), var(--shadow);
     z-index: 1;
-  }
-  .black {
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -150,27 +153,55 @@
     font-size: 0.66rem;
     line-height: 1.25;
     font-weight: 600;
-    color: #dfe6ff;
+    color: var(--key-black-ink);
     pointer-events: none;
+  }
+  .black.off {
+    background: var(--surface-off);
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .black.off .blabel {
+    color: var(--disabled);
+  }
+  .black:not(.off):not(.locked):active {
+    background: var(--accent);
+  }
+  /* Richtig/falsch: Farbe UND Symbol (✓ / ✗) */
+  .white.correct,
+  .black.correct {
+    background: var(--good);
+    color: var(--good-ink);
+  }
+  .white.wrong,
+  .black.wrong {
+    background: var(--bad);
+    color: var(--bad-ink);
   }
   .black.correct .blabel,
   .black.wrong .blabel {
     color: inherit;
   }
-  .black.off {
-    background: #1b1e26;
+  .correct::after,
+  .wrong::after {
+    position: absolute;
+    top: 8px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
   }
-  .black:not(.off):not(.locked):active {
-    background: #34406a;
+  .correct::after {
+    content: '✓';
   }
-  .white.correct,
-  .black.correct {
-    background: var(--good);
-    color: #06281a;
+  .wrong::after {
+    content: '✗';
   }
-  .white.wrong,
-  .black.wrong {
-    background: var(--bad);
-    color: #3a0808;
+  .black.correct::after,
+  .black.wrong::after {
+    top: 6px;
+    font-size: 1rem;
   }
 </style>

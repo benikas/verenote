@@ -62,11 +62,13 @@
     touch-action: manipulation;
   }
   button {
+    position: relative;
     min-height: 48px;
     padding: 4px 4px;
-    border: 0;
-    border-radius: 12px;
-    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    box-shadow: var(--shadow);
     color: var(--text);
     font-size: 0.92rem;
     font-weight: 600;
@@ -77,18 +79,37 @@
     justify-content: center;
   }
   button:not(.off):not(.locked):active {
-    background: var(--accent);
+    background: var(--accent-soft);
   }
   button.off {
-    background: #1b1e26;
-    color: #5c6475;
+    background: var(--surface-off);
+    color: var(--disabled);
+    box-shadow: none;
   }
+  /* Richtig/falsch: Farbe UND Symbol (✓ / ✗) */
   button.correct {
     background: var(--good);
-    color: #06281a;
+    color: var(--good-ink);
+    border-color: var(--good);
   }
   button.wrong {
     background: var(--bad);
-    color: #3a0808;
+    color: var(--bad-ink);
+    border-color: var(--bad);
+  }
+  button.correct::after,
+  button.wrong::after {
+    position: absolute;
+    top: 3px;
+    right: 7px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  button.correct::after {
+    content: '✓';
+  }
+  button.wrong::after {
+    content: '✗';
   }
 </style>
