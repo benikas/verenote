@@ -86,7 +86,7 @@
     color: var(--disabled);
     box-shadow: none;
   }
-  /* Richtig/falsch: Farbe UND Symbol (✓ / ✗) */
+  /* Richtig/falsch nur über Farbe (Entscheidung Auftraggeber 14.10.); der Text „Richtig/Falsch“ steht zusätzlich im Feedback */
   button.correct {
     background: var(--good);
     color: var(--good-ink);
@@ -96,20 +96,5 @@
     background: var(--bad);
     color: var(--bad-ink);
     border-color: var(--bad);
-  }
-  button.correct::after,
-  button.wrong::after {
-    position: absolute;
-    top: 3px;
-    right: 7px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-  button.correct::after {
-    content: '✓';
-  }
-  button.wrong::after {
-    content: '✗';
   }
 </style>

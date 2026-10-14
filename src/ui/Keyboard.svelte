@@ -166,7 +166,7 @@
   .black:not(.off):not(.locked):active {
     background: var(--accent);
   }
-  /* Richtig/falsch: Farbe UND Symbol (✓ / ✗) */
+  /* Richtig/falsch nur über Farbe (Entscheidung Auftraggeber 14.10.); der Text „Richtig/Falsch“ steht zusätzlich im Feedback */
   .white.correct,
   .black.correct {
     background: var(--good);
@@ -180,28 +180,5 @@
   .black.correct .blabel,
   .black.wrong .blabel {
     color: inherit;
-  }
-  .correct::after,
-  .wrong::after {
-    position: absolute;
-    top: 8px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 1.3rem;
-    font-weight: 700;
-    line-height: 1;
-    pointer-events: none;
-  }
-  .correct::after {
-    content: '✓';
-  }
-  .wrong::after {
-    content: '✗';
-  }
-  .black.correct::after,
-  .black.wrong::after {
-    top: 6px;
-    font-size: 1rem;
   }
 </style>
