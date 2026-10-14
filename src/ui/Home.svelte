@@ -6,10 +6,11 @@
 
   let {
     onpath,
+    onlearn,
     onfree,
     onstats,
     onsettings,
-  }: { onpath: () => void; onfree: () => void; onstats: () => void; onsettings: () => void } = $props()
+  }: { onpath: () => void; onlearn: () => void; onfree: () => void; onstats: () => void; onsettings: () => void } = $props()
 
   // Erinnerung an den Export (2.11)
   const remind = $derived(shouldRemind(backup))
@@ -50,6 +51,10 @@
     <button class="tile primary" onclick={onpath}>
       <span class="title">Lernpfad</span>
       <span class="sub">{doneCount} von {LEVELS.length} Stufen geschafft</span>
+    </button>
+    <button class="tile" onclick={onlearn}>
+      <span class="title">Lernen</span>
+      <span class="sub">Töne, Intervalle und Merksätze zum Nachlesen und Anhören</span>
     </button>
     <button class="tile" onclick={onfree}>
       <span class="title">Freies Training</span>

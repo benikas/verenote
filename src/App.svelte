@@ -14,13 +14,14 @@
   import FreeTraining from './ui/FreeTraining.svelte'
   import Home from './ui/Home.svelte'
   import Intro from './ui/Intro.svelte'
+  import Learn from './ui/Learn.svelte'
   import Path from './ui/Path.svelte'
   import Settings from './ui/Settings.svelte'
   import StartScreen from './ui/StartScreen.svelte'
   import Stats from './ui/Stats.svelte'
   import Summary from './ui/Summary.svelte'
 
-  type Screen = 'start' | 'home' | 'path' | 'free' | 'intro' | 'exercise' | 'summary' | 'test' | 'stats' | 'settings'
+  type Screen = 'start' | 'home' | 'learn' | 'path' | 'free' | 'intro' | 'exercise' | 'summary' | 'test' | 'stats' | 'settings'
 
   let screen = $state<Screen>('start')
   let load = $state<LoadState>(audio.loadState)
@@ -121,10 +122,13 @@
 {:else if screen === 'home'}
   <Home
     onpath={() => (screen = 'path')}
+    onlearn={() => (screen = 'learn')}
     onfree={() => (screen = 'free')}
     onstats={() => (screen = 'stats')}
     onsettings={() => (screen = 'settings')}
   />
+{:else if screen === 'learn'}
+  <Learn onback={() => (screen = 'home')} />
 {:else if screen === 'path'}
   <Path onback={() => (screen = 'home')} onstart={startRound} />
 {:else if screen === 'settings'}
